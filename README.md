@@ -40,6 +40,13 @@ Payments (optional, the app runs without them):
 - A "+10 XP" pop-up on every tick, with confetti on a level-up.
 - Profile photos: the browser crops and shrinks the photo to 160x160 JPEG; the server accepts only a small real JPEG and only shows it to people who share a group with you. No photo shows the first letter of the name.
 
+## Notifications
+- Browser push with no dependencies and nothing to configure: the signing key pair is made on first start and kept in the database (so keep `DB_FILE` on a persistent disk). People switch it on from the wall or the Account page. On iPhone it works once Crewmate is added to the home screen.
+- The push carries no content. It wakes the service worker, which asks `/api/push/latest` what to show, so nothing private passes through the push service. Only real browser push services are accepted as addresses.
+- What is sent: a reminder 30 minutes before a timed check-in opens (`CHECKIN_PING_MIN`), the evening "tasks left, money on the line" reminder, a friend finishing a task or joining a challenge, nudges and reactions, and who skipped yesterday and what they owe.
+- Set `VAPID_SUBJECT` to `mailto:` your address in production; push services use it to contact the sender.
+- Telegram still works if its variables are set, and stays hidden otherwise.
+
 ## Social layer, freezes, install
 - Reactions (👏 🔥 💪 😮) on friends' finished tasks; the owner is notified.
 - Activity feed on the wall ("Dana finished Gym · 5 min ago") and a 🔔 inbox with a notification for every task a friend finishes (once per task, no duplicates on re-tick). Telegram copies can be muted on the Account page.
@@ -61,7 +68,7 @@ Payments (optional, the app runs without them):
 
 ## Tests
 - `node sim/simulate.js`: 100 users, 25 groups, 14 days (details below).
-- `node sim/features-test.js`: 152 checks for crew challenges (join, floor on the stake, skip without opening the app, leave, end), proof by check-in time and photo, XP cap, reactions, feed, notifications, freezes, link previews, PWA files, admin gate, recovery codes, password change, session expiry, invite reset, leave rules, custom stakes and the Plus gate, doubts, public recap, sample group, Telegram link and reminders (against a fake Telegram server).
+- `node sim/features-test.js`: 167 checks for browser push (signed with the server key, address allow-list, dropped subscriptions), the pre-check-in reminder, crew challenges (join, floor on the stake, skip without opening the app, leave, end), proof by check-in time and photo, XP cap, reactions, feed, notifications, freezes, link previews, PWA files, admin gate, recovery codes, password change, session expiry, invite reset, leave rules, custom stakes and the Plus gate, doubts, public recap, sample group, Telegram link and reminders (against a fake Telegram server).
 
 ## Simulation
 `node sim/simulate.js` starts the server on a temp database and runs 100 users in 25 groups for 14 days (about 9,500 requests). Days are advanced by shifting dates in the database. It checks every user-day against an independent model of the rules (results, debts, streaks), and fires cheating attempts that must all be refused. Last run: `sim/last-run.json`. User behaviour (reliability, drop-out, who stakes) is assumed, not measured, so the product numbers are illustrative; the correctness checks are real.

@@ -5,56 +5,56 @@
     "days": 14
   },
   "requests": {
-    "total": 10197,
+    "total": 10144,
     "unexpectedErrors": 0,
     "sample": [],
-    "perSecond": 328,
-    "p50ms": 108.9,
-    "p95ms": 241.7,
-    "p99ms": 472.4,
-    "maxMs": 5616.1
+    "perSecond": 316,
+    "p50ms": 114.9,
+    "p95ms": 258.6,
+    "p99ms": 504.6,
+    "maxMs": 5514.9
   },
   "correctness": {
     "userDaysChecked": 1400,
     "resultMismatches": 0,
     "mismatchSample": [],
-    "debtsExpected": 261,
-    "debtsInDb": 261,
-    "debtDollarsExpected": 897,
-    "debtDollarsInDb": 897,
+    "debtsExpected": 265,
+    "debtsInDb": 265,
+    "debtDollarsExpected": 878,
+    "debtDollarsInDb": 878,
     "duplicateDebts": 0,
     "selfPaidDebts": 0,
     "streakMismatches": 0,
     "freeCapRefusedFifthMember": true
   },
   "cheating": {
-    "attempts": 597,
-    "blocked": 597,
+    "attempts": 602,
+    "blocked": 602,
     "leaked": []
   },
   "product": {
-    "plansPosted": 967,
-    "fullyDone": 525,
-    "missed": 442,
-    "completionRate": 0.54,
+    "plansPosted": 971,
+    "fullyDone": 514,
+    "missed": 457,
+    "completionRate": 0.53,
     "activePostersByDay": [
       78,
-      87,
-      83,
-      82,
-      75,
-      74,
+      88,
+      84,
+      84,
+      79,
       76,
-      69,
-      69,
-      58,
-      55,
+      77,
+      68,
+      62,
       60,
-      50,
-      51
+      55,
+      55,
+      53,
+      52
     ],
-    "dollarsLost": 897,
-    "debtsConfirmedPaid": 244,
-    "nudgesSent": 126
+    "dollarsLost": 878,
+    "debtsConfirmedPaid": 246,
+    "nudgesSent": 140
   }
 }

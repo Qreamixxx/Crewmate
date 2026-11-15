@@ -27,6 +27,9 @@ CREATE TABLE IF NOT EXISTS notifications(id INTEGER PRIMARY KEY, user_id INTEGER
 CREATE INDEX IF NOT EXISTS notif_by_user ON notifications(user_id,read);
 CREATE TABLE IF NOT EXISTS reactions(task_id INTEGER, user_id INTEGER, emoji TEXT, PRIMARY KEY(task_id,user_id));
 CREATE TABLE IF NOT EXISTS freezes(group_id INTEGER, user_id INTEGER, day TEXT, PRIMARY KEY(group_id,user_id,day));
+CREATE TABLE IF NOT EXISTS settings(key TEXT PRIMARY KEY, value TEXT);
+CREATE TABLE IF NOT EXISTS push_subs(endpoint TEXT PRIMARY KEY, user_id INTEGER, created INTEGER);
+CREATE TABLE IF NOT EXISTS pings(task_id INTEGER PRIMARY KEY);
 CREATE TABLE IF NOT EXISTS challenges(id INTEGER PRIMARY KEY, group_id INTEGER, title TEXT, stake INTEGER, at TEXT, days TEXT DEFAULT '', photo INTEGER DEFAULT 0, start TEXT, ended TEXT, created_by INTEGER);
 CREATE TABLE IF NOT EXISTS challenge_members(challenge_id INTEGER, user_id INTEGER, since TEXT, PRIMARY KEY(challenge_id,user_id));
 CREATE TABLE IF NOT EXISTS debts(id INTEGER PRIMARY KEY, group_id INTEGER, user_id INTEGER, day TEXT, amount INTEGER, paid INTEGER DEFAULT 0, paid_by INTEGER);
@@ -67,6 +70,33 @@ const q = (sql, ...a) => db.prepare(sql).all(...a);
 const one = (sql, ...a) => db.prepare(sql).get(...a);
 const run = (sql, ...a) => db.prepare(sql).run(...a);
 
+// ---- Browser notifications (Web Push), no dependencies.
+// The push carries no payload, so nothing needs encrypting: it only wakes the service worker, which then asks
+// /api/push/latest what to show. The signing key pair is made on first start and kept in the database.
+const b64u = x => Buffer.from(x).toString('base64url');
+const VAPID = (() => {
+  const row = one("SELECT value FROM settings WHERE key='vapid'");
+  let jwk = row && JSON.parse(row.value);
+  if (!jwk) { jwk = crypto.generateKeyPairSync('ec', { namedCurve: 'prime256v1' }).privateKey.export({ format: 'jwk' }); run("INSERT INTO settings VALUES('vapid',?)", JSON.stringify(jwk)); }
+  return { key: crypto.createPrivateKey({ key: jwk, format: 'jwk' }), pub: b64u(Buffer.concat([Buffer.from([4]), Buffer.from(jwk.x, 'base64url'), Buffer.from(jwk.y, 'base64url')])) };
+})();
+function vapidJwt(aud) {
+  const head = b64u(JSON.stringify({ typ: 'JWT', alg: 'ES256' }));
+  const body = b64u(JSON.stringify({ aud, exp: Math.floor(Date.now() / 1000) + 12 * 3600, sub: process.env.VAPID_SUBJECT || 'mailto:admin@example.com' }));
+  return `${head}.${body}.${b64u(crypto.sign('sha256', Buffer.from(head + '.' + body), { key: VAPID.key, dsaEncoding: 'ieee-p1363' }))}`;
+}
+// Only real browser push services are accepted, so the server can never be pointed at an arbitrary address.
+const PUSH_HOSTS = /(^|\.)(fcm\.googleapis\.com|push\.services\.mozilla\.com|notify\.windows\.com|push\.apple\.com)$/;
+const pushUrlOk = s => { try { const u = new URL(s); return (u.protocol === 'https:' && PUSH_HOSTS.test(u.hostname)) || (!!process.env.PUSH_TEST_HOST && u.host === process.env.PUSH_TEST_HOST); } catch { return false; } };
+function pushSend(uid) {
+  for (const s of q('SELECT endpoint FROM push_subs WHERE user_id=?', uid)) {
+    let aud; try { aud = new URL(s.endpoint).origin; } catch { continue; }
+    fetch(s.endpoint, { method: 'POST', headers: { TTL: '3600', Urgency: 'high', Authorization: `vapid t=${vapidJwt(aud)}, k=${VAPID.pub}` } })
+      .then(r => { if ([403, 404, 410].includes(r.status)) run('DELETE FROM push_subs WHERE endpoint=?', s.endpoint); }) // the browser dropped this subscription
+      .catch(e => console.error('push', e.message));
+  }
+}
+
 const FREEZES_OFF = process.env.FREEZES_OFF === '1'; // used by the simulation, which models plain results only
 const GRACE_MS = Number(process.env.STAKE_GRACE_MS || 600000); // a new stake (and its tasks) can be changed for 10 minutes if nothing is ticked yet
 const DEFAULT_STAKE = 2;
@@ -92,6 +122,7 @@ function notifyUser(uid, gid, text) {
   run('INSERT INTO notifications(user_id,group_id,text,at) VALUES(?,?,?,?)', uid, gid, text, Date.now());
   const r = one('SELECT notify_tg FROM users WHERE id=?', uid);
   if (r && r.notify_tg) tgSend(uid, text);
+  pushSend(uid);
 }
 function notifyOthers(gid, fromUid, text) { for (const m of q('SELECT user_id FROM members WHERE group_id=? AND user_id<>?', gid, fromUid)) notifyUser(m.user_id, gid, text); }
 function pushEvent(gid, uid, kind, taskId, day, text) { return run('INSERT OR IGNORE INTO events(group_id,user_id,kind,task_id,day,text,at) VALUES(?,?,?,?,?,?,?)', gid, uid, kind, taskId, day, text, Date.now()); }
@@ -102,6 +133,7 @@ function closeDays(gid) {
   const t = today(g.tz || 'UTC');
   let d = addDays(g.closed_through, 1);
   while (d < t) {
+    const skipped = [];
     db.exec('BEGIN'); // one day closes fully or not at all
     try {
     ensureChallengeTasks(gid, d); // someone who never opened the app that day still gets the challenge task, and so the miss
@@ -126,11 +158,17 @@ function closeDays(gid) {
         }
       }
       run('INSERT OR IGNORE INTO results VALUES(?,?,?,?)', gid, m.user_id, d, status);
-      if (wasMissed && staked) run('INSERT OR IGNORE INTO debts(group_id,user_id,day,amount) VALUES(?,?,?,?)', gid, m.user_id, d, s.amount);
+      if (wasMissed && staked && run('INSERT OR IGNORE INTO debts(group_id,user_id,day,amount) VALUES(?,?,?,?)', gid, m.user_id, d, s.amount).changes && !g.sample && d === addDays(t, -1)) skipped.push([m.user_id, s.amount]);
     }
     run('UPDATE groups SET closed_through=? WHERE id=?', d, gid);
     db.exec('COMMIT');
     } catch (err) { db.exec('ROLLBACK'); throw err; }
+    // Tell the crew who skipped yesterday (older days are closed quietly, so a long absence does not flood anyone).
+    for (const [uid, amount] of skipped) {
+      const who = (one('SELECT name FROM users WHERE id=?', uid) || {}).name || 'Someone';
+      notifyUser(uid, gid, `You skipped yesterday in ${g.name}. You owe the crew $${amount}.`);
+      notifyOthers(gid, uid, `${who} skipped yesterday and owes the crew $${amount}.`);
+    }
     d = addDays(d, 1);
   }
 }
@@ -593,6 +631,21 @@ route('GET', '/api/tasks/:id/photo', async (req, res, u, b, [id]) => {
   res.writeHead(200, { 'content-type': 'image/jpeg', 'cache-control': 'private, max-age=3600' });
   res.end(Buffer.from(t.photo, 'base64'));
 });
+route('GET', '/api/push/key', async (req, res) => json(res, 200, { key: VAPID.pub }));
+route('POST', '/api/push/subscribe', async (req, res, u, b) => {
+  const ep = String(b.endpoint || '');
+  if (ep.length > 1000 || !pushUrlOk(ep)) return json(res, 400, { error: 'That browser cannot receive notifications from here.' });
+  run('INSERT OR REPLACE INTO push_subs(endpoint,user_id,created) VALUES(?,?,?)', ep, u.id, Date.now());
+  // keep the 10 newest devices per person
+  run('DELETE FROM push_subs WHERE user_id=? AND endpoint NOT IN (SELECT endpoint FROM push_subs WHERE user_id=? ORDER BY created DESC LIMIT 10)', u.id, u.id);
+  json(res, 200, { ok: true });
+});
+route('POST', '/api/push/unsubscribe', async (req, res, u, b) => { run('DELETE FROM push_subs WHERE endpoint=? AND user_id=?', String(b.endpoint || ''), u.id); json(res, 200, { ok: true }); });
+// What the service worker shows when a push wakes it: the newest unread notification of the signed-in person.
+route('GET', '/api/push/latest', async (req, res, u) => {
+  const n = one('SELECT n.text,g.name AS grp FROM notifications n LEFT JOIN groups g ON g.id=n.group_id WHERE n.user_id=? AND n.read=0 AND n.at>? ORDER BY n.id DESC LIMIT 1', u.id, Date.now() - 600000);
+  json(res, 200, n ? { text: n.text, group: n.grp || null } : {});
+});
 // ---- Gamification: everything is computed from the data, so XP and badges can never drift out of sync.
 const LEVELS = [0, 50, 150, 300, 500, 800, 1200, 1800, 2600, 3600];
 const LEVEL_NAMES = ['Rookie', 'Regular', 'Grinder', 'Machine', 'Veteran', 'Beast', 'Legend', 'Mythic', 'Immortal', 'Mastermind'];
@@ -697,18 +750,38 @@ route('POST', '/api/telegram/unlink', async (req, res, u) => { run('UPDATE users
 const localHour = tz => Number(new Intl.DateTimeFormat('en-US', { timeZone: tz, hour: '2-digit', hour12: false }).format(new Date())) % 24;
 function sendReminders() {
   const hourFrom = Number(process.env.REMIND_HOUR ?? 19);
-  for (const m of q("SELECT m.user_id,m.group_id,g.name gname,g.tz FROM members m JOIN groups g ON g.id=m.group_id JOIN users u ON u.id=m.user_id WHERE u.tg_chat IS NOT NULL AND g.sample=0")) {
+  for (const m of q("SELECT m.user_id,m.group_id,g.name gname,g.tz FROM members m JOIN groups g ON g.id=m.group_id JOIN users u ON u.id=m.user_id WHERE (u.tg_chat IS NOT NULL OR EXISTS(SELECT 1 FROM push_subs p WHERE p.user_id=u.id)) AND g.sample=0")) {
     const tz = m.tz || 'UTC';
     if (localHour(tz) < hourFrom) continue;
     const t = today(tz);
     if (one('SELECT 1 FROM reminders WHERE user_id=? AND group_id=? AND day=?', m.user_id, m.group_id, t)) continue;
-    closeDays(m.group_id);
+    closeDays(m.group_id); ensureChallengeTasks(m.group_id, t);
     const tasks = q('SELECT done FROM tasks WHERE group_id=? AND user_id=? AND day=?', m.group_id, m.user_id, t), left = tasks.filter(x => !x.done).length;
     const stake = (one('SELECT amount FROM stakes WHERE group_id=? AND user_id=? AND day=?', m.group_id, m.user_id, t) || {}).amount || 0;
     let text = null;
     if (tasks.length && left) text = `${m.gname}: ${left} task${left > 1 ? 's' : ''} left today${stake ? `, $${stake} on the line` : ''}.`;
     else if (!tasks.length) { const st = streakOf(m.group_id, m.user_id, t); if (st) text = `${m.gname}: you have no plan today. Don't lose your ${st}-day streak.`; }
-    if (text) { run('INSERT OR IGNORE INTO reminders VALUES(?,?,?)', m.user_id, m.group_id, t); tgSend(m.user_id, text); } // marked only once actually sent
+    if (text) { run('INSERT OR IGNORE INTO reminders VALUES(?,?,?)', m.user_id, m.group_id, t); remind(m.user_id, m.group_id, text); } // marked only once actually sent
+  }
+  sendCheckinPings();
+}
+// A reminder lands in the inbox and goes out on every channel the person has switched on.
+function remind(uid, gid, text) { run('INSERT INTO notifications(user_id,group_id,text,at) VALUES(?,?,?,?)', uid, gid, text, Date.now()); tgSend(uid, text); pushSend(uid); }
+// "It's time": one message shortly before a timed task's check-in opens (or as it opens, if the server was late).
+const PING_MIN = Number(process.env.CHECKIN_PING_MIN || 30);
+function sendCheckinPings() {
+  // Put today's timed challenge tasks on the plan even if nobody has opened the app yet today.
+  for (const g of q('SELECT DISTINCT g.id,g.tz FROM groups g JOIN challenges c ON c.group_id=g.id WHERE c.at IS NOT NULL AND g.sample=0')) { closeDays(g.id); ensureChallengeTasks(g.id, today(g.tz || 'UTC')); }
+  const from = addDays(new Date().toISOString().slice(0, 10), -1);
+  for (const x of q('SELECT t.id,t.user_id,t.group_id,t.title,t.due,t.day,g.tz FROM tasks t JOIN groups g ON g.id=t.group_id JOIN members m ON m.group_id=t.group_id AND m.user_id=t.user_id WHERE t.due IS NOT NULL AND t.done=0 AND g.sample=0 AND t.day>=? AND NOT EXISTS(SELECT 1 FROM pings p WHERE p.task_id=t.id)', from)) {
+    const tz = x.tz || 'UTC';
+    if (x.day !== today(tz)) continue;
+    const left = toMin(x.due) - localMinutes(tz);
+    if (left > PING_MIN || left < -WINDOW_MIN) continue;
+    run('INSERT OR IGNORE INTO pings VALUES(?)', x.id);
+    const stake = (one('SELECT amount FROM stakes WHERE group_id=? AND user_id=? AND day=?', x.group_id, x.user_id, x.day) || {}).amount || 0;
+    const money = stake ? ` $${stake} on it.` : '';
+    remind(x.user_id, x.group_id, left > WINDOW_MIN ? `"${x.title}" in ${left} minutes.${money}` : `Check-in for "${x.title}" is open until ${fmtMin(toMin(x.due) + WINDOW_MIN)}.${money}`);
   }
 }
 async function tgPoll() {
@@ -728,7 +801,8 @@ async function tgPoll() {
     } catch (e) { console.error('telegram poll', e.message); await new Promise(r => setTimeout(r, 5000)); }
   }
 }
-if (TG_TOKEN) { tgPoll(); setInterval(() => { try { sendReminders(); } catch (e) { console.error(e); } }, Number(process.env.REMIND_EVERY_MS || 600000)); }
+if (TG_TOKEN) tgPoll();
+setInterval(() => { try { sendReminders(); } catch (e) { console.error(e); } }, Number(process.env.REMIND_EVERY_MS || 60000));
 
 // Private numbers for the pitch. Off unless ADMIN_TOKEN is set; the page asks for the token.
 function adminStats() {

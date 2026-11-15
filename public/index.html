@@ -103,7 +103,7 @@ function dlg(msg,o={}){return new Promise(done=>{const ov=document.createElement
 const ask=(msg,o={})=>dlg(msg,{...o,input:true}),confirmBox=(msg,ok)=>dlg(msg,{ok:ok||'Yes'}),say=msg=>dlg(msg,{cancel:false});
 const ago=at=>{const m=Math.max(0,Math.round((Date.now()-at)/60000));return m<1?'just now':m<60?m+' min ago':m<1440?Math.round(m/60)+' h ago':Math.round(m/1440)+' d ago'};
 const shareUrl=(k,v)=>location.origin+'/'+k+'/'+v;
-async function boot(){const j=await api('me');me=j.user;groups=j.groups||[];tgInfo=j.telegram||{};unread=j.unread||0;render()}
+async function boot(){const j=await api('me');me=j.user;groups=j.groups||[];tgInfo=j.telegram||{};unread=j.unread||0;try{pushSt=await pushState()}catch{}render()}
 (function(){const m=/^\/(join|r)\/([A-Za-z0-9]+)$/.exec(location.pathname);if(m)history.replaceState(null,'','/#/'+m[1]+'/'+m[2])})();
 window.addEventListener('hashchange',render);
 if('serviceWorker' in navigator)addEventListener('load',()=>navigator.serviceWorker.register('/sw.js').catch(()=>{}));
@@ -113,7 +113,7 @@ function nav(gid,active){
   return `<nav><a class="logo" href="#/">Crewmate</a>${gid?t('wall','Group wall')+t('plan','My plan')+t('ledger','Stakes')+t('recap','Recap')+t('plus','Plus'):''}
   ${me?`<a class="btn light sm bell" style="text-decoration:none" href="#/inbox" title="Notifications">🔔${unread?`<b>${unread}</b>`:''}</a><a class="btn light sm" style="text-decoration:none" href="#/account">${esc(me.name)} · account</a>`:''}</nav>`;
 }
-async function logout(){await api('logout',{});me=null;groups=[];go('#/');render()}
+async function logout(){await pushOff(true);await api('logout',{});me=null;groups=[];go('#/');render()}
 function clearTimer(){if(timer){clearInterval(timer);timer=null}}
 
 async function render(){
@@ -199,6 +199,24 @@ function recoverView(){
 }
 async function doRecover(){try{await api('recover',{name:n.value,code:c.value,password:p.value});go('#/');await boot()}catch(e){document.getElementById('e').textContent=e.message}}
 
+// ---- Notifications on this device (browser push).
+let pushSt='unsupported';
+const pushOk=()=>'serviceWorker' in navigator&&'PushManager' in window&&'Notification' in window;
+const b64ToU8=s=>{const r=atob((s+'='.repeat((4-s.length%4)%4)).replace(/-/g,'+').replace(/_/g,'/'));return Uint8Array.from(r,c=>c.charCodeAt(0))};
+async function pushState(){if(!pushOk())return 'unsupported';if(Notification.permission==='denied')return 'denied';const reg=await navigator.serviceWorker.getRegistration();return reg&&await reg.pushManager.getSubscription()?'on':'off'}
+async function pushOn(){
+  try{if(!pushOk())return say('This browser cannot show notifications. On iPhone, add Crewmate to your home screen first, then open it from there.');
+    if(await Notification.requestPermission()!=='granted'){pushSt=await pushState();render();return say('Notifications are blocked for this site. Allow them in the browser settings to get reminders.')}
+    const reg=await navigator.serviceWorker.ready,{key}=await api('push/key'),old=await reg.pushManager.getSubscription();
+    if(old)await old.unsubscribe(); // a subscription made for an older server key would never deliver
+    const sub=await reg.pushManager.subscribe({userVisibleOnly:true,applicationServerKey:b64ToU8(key)});
+    await api('push/subscribe',{endpoint:sub.endpoint});pushSt='on';render();toast('Notifications are on')}catch(e){say(e.message)}}
+async function pushOff(quiet){
+  try{const reg=await navigator.serviceWorker.getRegistration(),sub=reg&&await reg.pushManager.getSubscription();
+    if(sub){await api('push/unsubscribe',{endpoint:sub.endpoint});await sub.unsubscribe()}pushSt=await pushState();if(!quiet)render()}catch(e){if(!quiet)say(e.message)}}
+function pushLater(){try{sessionStorage.setItem('nopush','1')}catch{}render()}
+const pushAsk=()=>{let no=false;try{no=!!sessionStorage.getItem('nopush')}catch{}return pushSt==='off'&&!no?`<div class="note" style="display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap"><span>🔔 Get a reminder before check-in opens, and hear when a friend shows up or skips.</span><span><button class="btn sm" onclick="pushOn()">Turn on notifications</button> <button class="btn light sm" onclick="pushLater()">Not now</button></span></div>`:''};
+
 // ---- Crew challenge: the one shared commitment a crew starts with.
 const DOW=['Mon','Tue','Wed','Thu','Fri','Sat','Sun'],el=id=>document.getElementById(id);
 const fmtT=s=>{const [h,m]=s.split(':').map(Number);return ((h+11)%12+1)+':'+String(m).padStart(2,'0')+(h<12?' AM':' PM')};
@@ -274,6 +292,7 @@ async function wall(gid){
       <p style="margin:14px 0 0">${inIt?`<span class="pill">You're in</span> <button class="btn light sm" onclick="chLeave(${c.id},'${gid}')">Leave</button>`:`<button class="btn" onclick="chJoin(${c.id},${c.stake},'${gid}')">I'm in · $${c.stake} on it</button>`}${mine&&(c.created_by===mine.id||d.group.isOwner)?` <button class="btn light sm" onclick="chEnd(${c.id},'${gid}')">End challenge</button>`:''}</p></div>`}).join('')
       ||(d.group.sample?'':`<div class="stake"><b style="font-size:22px">No crew challenge yet.</b><div style="font-weight:700">Pick one thing everyone shows up for, with money on it.</div><p style="margin:12px 0 0"><a class="btn" style="text-decoration:none" href="#/g/${gid}/challenge">Set a challenge</a></p></div>`);
     $app.innerHTML=nav(gid,'wall')+`<div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px"><div><h1 style="margin-bottom:6px">${esc(d.group.name)}</h1>${d.group.min_stake?`<span class="pill" style="background:var(--yellow)">Crew rule: at least $${d.group.min_stake} a day</span>`:''}</div><button class="share" onclick="copyLink('${link}',this)">Invite a friend · copy link</button></div>
+    ${pushAsk()}
     ${chs}
     <div class="quest">Crew quest this week: <b>${qs.done}/${qs.goal}</b> tasks ticked together ${qs.done>=qs.goal?'🎉 Complete!':''}<div class="xpbar"><i style="width:${qp}%"></i></div></div>
     ${d.group.sample?'<div class="note">Sample group: Dana, Arman and Timur are pretend friends. Try ticking a task or putting money on your own plan.</div>':''}
@@ -399,6 +418,7 @@ async function account(){
     <p style="margin:14px 0 6px"><label class="btn light sm" style="cursor:pointer">Upload a photo<input type="file" accept="image/*" style="display:none" onchange="uploadAvatar(this)"></label> ${pr.avatar?'<button class="btn light sm" onclick="rmAvatar()">Remove photo</button>':''}</p>
     <h2 style="margin-top:22px">Badges (${pr.badges.filter(b=>b.earned).length}/${pr.badges.length})</h2><div class="bgrid">${pr.badges.map(b=>`<div class="bg ${b.earned?'':'off'}"><b>${b.emoji}</b>${esc(b.name)}<div class="small muted">${esc(b.desc)}</div></div>`).join('')}</div>
     <p class="small muted" style="margin-top:14px">XP: 10 per ticked task (max 5 tasks a day count), 25 per fully finished day, 15 more when money was on it, 3 per nudge or cheer (max 30).</p></div><div class="panel"><h2>Change password</h2><input id="op" type="password" placeholder="Current password"><input id="np" type="password" placeholder="New password (6+ characters)"><p class="err" id="e"></p><button class="btn blue" onclick="chPw()">Save</button></div>
+  <div class="panel"><h2>Notifications</h2><p class="muted">A reminder before your check-in opens, a heads-up in the evening when money is still on the line, and a note when a friend shows up or skips.</p>${pushSt==='on'?'<p><b>On for this device ✓</b></p><button class="btn light" onclick="pushOff()">Turn off</button>':pushSt==='off'?'<button class="btn blue" onclick="pushOn()">Turn on notifications</button>':pushSt==='denied'?'<p><b>Notifications are blocked for this site.</b> Allow them in your browser settings for this site, then reload.</p>':'<p><b>This browser cannot show notifications.</b> On iPhone, add Crewmate to your home screen first, then open it from there.</p>'}</div>
   ${t.enabled?`<div class="panel"><h2>Telegram reminders</h2><p class="muted">Get a message when a plan is unfinished in the evening, when a friend nudges you, and when friends finish tasks.</p>${t.linked?`<p><b>Connected ✓</b></p><p><label style="font-weight:700"><input type="checkbox" style="width:auto;margin:0 8px 0 0" ${t.notify!==false?'checked':''} onchange="setNotify(this.checked)">Message me when a friend finishes a task</label></p><button class="btn light" onclick="tgUnlink()">Disconnect</button>`:`<button class="btn blue" onclick="tgLink()">Connect Telegram</button>`}</div>`:''}
   <div class="panel"><h2>Recovery code</h2><p class="muted">Make a new code if you lost yours or your account has none. The old one stops working.</p><input id="rp" type="password" placeholder="Your password"><button class="btn light" onclick="newRec()">Make a new recovery code</button></div>
   <div class="panel"><button class="btn light" onclick="logout()">Log out</button></div>`;

@@ -26,7 +26,7 @@ const exec = q => { const db = new DatabaseSync(DB); db.exec(q); db.close(); };
     if (m === 'sendMessage') { sent.push(j); return res.end('{"ok":true}'); }
     if (m === 'getUpdates') return setTimeout(() => { res.end(JSON.stringify({ ok: true, result: queue.splice(0) })); }, 150);
     res.end('{"ok":true}'); }); }).listen(3333);
-  const srv = spawn('node', [path.join(__dirname, '..', 'server.js')], { env: { ...process.env, PORT, DB_FILE: DB, TELEGRAM_BOT_TOKEN: 'T', TELEGRAM_BOT_NAME: 'crewmate_bot', TELEGRAM_API: 'http://localhost:3333', TG_POLL_SECONDS: '0', STAKE_GRACE_MS: '2500', REMIND_HOUR: '0', REMIND_EVERY_MS: '400', SIGNUP_LIMIT: '1000', FREE_MEMBERS: '4' }, stdio: ['ignore', 'pipe', 'pipe'] });
+  const srv = spawn('node', [path.join(__dirname, '..', 'server.js')], { env: { ...process.env, PORT, DB_FILE: DB, TELEGRAM_BOT_TOKEN: 'T', TELEGRAM_BOT_NAME: 'crewmate_bot', TELEGRAM_API: 'http://localhost:3333', TG_POLL_SECONDS: '0', STAKE_GRACE_MS: '2500', REMIND_HOUR: '0', REMIND_EVERY_MS: '400', SIGNUP_LIMIT: '1000', FREE_MEMBERS: '4', PUSH_TEST_HOST: 'localhost:3334' }, stdio: ['ignore', 'pipe', 'pipe'] });
   srv.stderr.on('data', d => { if (!/Experimental|trace-warnings/.test(d)) process.stderr.write(d); });
   await new Promise(r => srv.stdout.on('data', d => /on http/.test(d) && r()));
 
@@ -349,6 +349,49 @@ const exec = q => { const db = new DatabaseSync(DB); db.exec(q); db.close(); };
     ok('tick outside the check-in window is refused', (await call(s, 'POST', `/api/tasks/${st.id}/toggle`, { photo: jpg })).s === 400);
     ok('a check-in time that already passed is refused', nowMin < 40 || (await call(s, 'POST', `/api/groups/${g.id}/tasks`, { title: 'Late', due: hhmm(nowMin - 30) })).s === 400);
     ok('a task without proof options still ticks freely', (await call(s, 'POST', `/api/groups/${g.id}/tasks`, { title: 'Read' })).s === 200 && (await call(s, 'POST', `/api/tasks/${(await mine(s)).tasks.find(x => x.title === 'Read').id}/toggle`, {})).s === 200);
+  }
+
+  // --- Browser notifications (Web Push) and the reminder before a check-in opens
+  {
+    const cr = require('node:crypto'), wait = ms => new Promise(r => setTimeout(r, ms));
+    const hits = []; let status = 201;
+    const ps = http.createServer((req, res) => { hits.push({ url: req.url, auth: req.headers.authorization || '', ttl: req.headers.ttl }); res.writeHead(status); res.end(); }).listen(3334);
+    const x = await mk('Xena'), y = await mk('Yuri');
+    const g = (await call(x, 'POST', '/api/groups', { name: 'Push crew', tz: 'UTC' })).j; await call(y, 'POST', '/api/join', { code: g.code });
+    const key = (await call(x, 'GET', '/api/push/key')).j.key, pt = Buffer.from(key || '', 'base64url');
+    ok('push key is a P-256 public point', pt.length === 65 && pt[0] === 4);
+    ok('push key needs sign-in', (await call({}, 'GET', '/api/push/key')).s === 401);
+    ok('arbitrary push address is refused', (await call(x, 'POST', '/api/push/subscribe', { endpoint: 'https://evil.example/x' })).s === 400);
+    ok('plain http push address is refused', (await call(x, 'POST', '/api/push/subscribe', { endpoint: 'http://fcm.googleapis.com/fcm/send/a' })).s === 400);
+    ok('look-alike push host is refused', (await call(x, 'POST', '/api/push/subscribe', { endpoint: 'https://fcm.googleapis.com.evil.example/a' })).s === 400);
+    ok('real push service is accepted and can be removed', (await call(y, 'POST', '/api/push/subscribe', { endpoint: 'https://fcm.googleapis.com/fcm/send/abc' })).s === 200 && (await call(y, 'POST', '/api/push/unsubscribe', { endpoint: 'https://fcm.googleapis.com/fcm/send/abc' })).s === 200 && sql('SELECT 1 FROM push_subs WHERE user_id=?', y.id).length === 0);
+    ok('device subscribes', (await call(x, 'POST', '/api/push/subscribe', { endpoint: 'http://localhost:3334/p/xena' })).s === 200);
+    await call(y, 'POST', `/api/groups/${g.id}/tasks`, { title: 'Swim' });
+    const yt = (await call(y, 'GET', `/api/groups/${g.id}/wall`)).j.members.find(m => m.me).tasks[0];
+    hits.length = 0; await call(y, 'POST', `/api/tasks/${yt.id}/toggle`, {}); await wait(400);
+    const hit = hits.find(h => h.url === '/p/xena');
+    ok('a friend finishing a task pushes to the device', !!hit, hits);
+    const mm = /^vapid t=([\w-]+)\.([\w-]+)\.([\w-]+), k=([\w-]+)$/.exec(hit ? hit.auth : '') || [];
+    const pub = cr.createPublicKey({ key: { kty: 'EC', crv: 'P-256', x: pt.subarray(1, 33).toString('base64url'), y: pt.subarray(33).toString('base64url') }, format: 'jwk' });
+    ok('push is signed with the server key', mm[4] === key && cr.verify('sha256', Buffer.from(mm[1] + '.' + mm[2]), { key: pub, dsaEncoding: 'ieee-p1363' }, Buffer.from(mm[3] || '', 'base64url')));
+    const claims = mm[2] ? JSON.parse(Buffer.from(mm[2], 'base64url')) : {};
+    ok('push token names the push service and expires', claims.aud === 'http://localhost:3334' && claims.exp > Date.now() / 1000 && claims.exp < Date.now() / 1000 + 86400 && /^mailto:/.test(claims.sub), claims);
+    ok('service worker can fetch what to show', /Yuri finished/.test((await call(x, 'GET', '/api/push/latest')).j.text || ''));
+    ok('nothing to show for someone with no news', (await call(y, 'GET', '/api/push/latest')).j.text === undefined);
+    const d1 = new Date(), nm = d1.getUTCHours() * 60 + d1.getUTCMinutes(), hm = m => String(Math.floor(m / 60)).padStart(2, '0') + ':' + String(m % 60).padStart(2, '0');
+    if (nm < 1400) {
+      await call(x, 'POST', `/api/groups/${g.id}/tasks`, { title: 'Run', due: hm(nm + 20) });
+      hits.length = 0; await wait(1300);
+      const pings = (await call(x, 'GET', '/api/notifications')).j.items.filter(n => /^"Run" in (19|20) minutes\. \$2 on it\.$/.test(n.text));
+      ok('reminder goes out before the check-in opens', pings.length === 1 && hits.some(h => h.url === '/p/xena'), [pings, hits.length]);
+      await wait(900);
+      ok('the reminder is sent once', (await call(x, 'GET', '/api/notifications')).j.items.filter(n => /^"Run" in/.test(n.text)).length === 1);
+    } else { ok('reminder goes out before the check-in opens', true); ok('the reminder is sent once', true); }
+    status = 410; await call(y, 'POST', `/api/groups/${g.id}/tasks`, { title: 'Bike' });
+    const yb = (await call(y, 'GET', `/api/groups/${g.id}/wall`)).j.members.find(m => m.me).tasks.find(t => t.title === 'Bike');
+    await call(y, 'POST', `/api/tasks/${yb.id}/toggle`, {}); await wait(400);
+    ok('a subscription the browser dropped is forgotten', sql('SELECT 1 FROM push_subs WHERE user_id=?', x.id).length === 0);
+    ps.close();
   }
 
   // --- Stripe lifecycle
