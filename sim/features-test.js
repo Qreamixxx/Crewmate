@@ -351,6 +351,20 @@ const exec = q => { const db = new DatabaseSync(DB); db.exec(q); db.close(); };
     ok('a task without proof options still ticks freely', (await call(s, 'POST', `/api/groups/${g.id}/tasks`, { title: 'Read' })).s === 200 && (await call(s, 'POST', `/api/tasks/${(await mine(s)).tasks.find(x => x.title === 'Read').id}/toggle`, {})).s === 200);
   }
 
+  // --- Leaving cannot erase a day that nobody looked at
+  {
+    const a1 = await mk('Lea'), b1 = await mk('Max');
+    const g = (await call(a1, 'POST', '/api/groups', { name: 'Quiet crew', tz: 'UTC' })).j; await call(b1, 'POST', '/api/join', { code: g.code });
+    const ch = (await call(a1, 'POST', `/api/groups/${g.id}/challenges`, { title: 'Walk', stake: 5 })).j;
+    await call(b1, 'POST', `/api/challenges/${ch.id}/join`, {});
+    const sh = n => { shift(n); exec(`UPDATE challenges SET start=date(start,'-${n} day'), ended=date(ended,'-${n} day')`); exec(`UPDATE challenge_members SET since=date(since,'-${n} day')`); };
+    sh(2); // two days pass and nobody opens the wall
+    ok('leaving a challenge after silent days still owes them', (await call(b1, 'POST', `/api/challenges/${ch.id}/leave`, {})).s === 200 && sql('SELECT 1 FROM debts WHERE group_id=? AND user_id=?', g.id, b1.id).length === 2, sql('SELECT * FROM debts WHERE group_id=?', g.id));
+    ok('leaving the crew is blocked while those days are unpaid', (await call(b1, 'POST', `/api/groups/${g.id}/leave`, {})).s === 400);
+    sh(1);
+    ok('leaving the crew cannot dodge today\'s challenge', (await call(a1, 'POST', `/api/groups/${g.id}/leave`, {})).s === 400);
+  }
+
   // --- Browser notifications (Web Push) and the reminder before a check-in opens
   {
     const cr = require('node:crypto'), wait = ms => new Promise(r => setTimeout(r, ms));

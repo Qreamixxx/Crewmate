@@ -344,7 +344,7 @@ route('POST', '/api/join', async (req, res, u, b) => {
   const g = one('SELECT * FROM groups WHERE code=?', String(b.code || ''));
   if (!g) return json(res, 404, { error: 'Invite link not found' });
   if (!isMember(g.id, u.id) && !g.plus && one('SELECT COUNT(*) c FROM members WHERE group_id=?', g.id).c >= FREE_MEMBERS)
-    return json(res, 402, { error: `Free groups hold ${FREE_MEMBERS} people. Ask a member to upgrade the group to Plus.` });
+    return json(res, 402, { error: `This crew is full. Free crews hold ${FREE_MEMBERS} people. Ask the friend who invited you to upgrade the crew to Plus.` });
   const had = isMember(g.id, u.id);
   run('INSERT OR IGNORE INTO members VALUES(?,?,?)', g.id, u.id, today(g.tz || 'UTC'));
   if (!had) { pushEvent(g.id, u.id, 'joined', null, null, `${u.name} joined the crew`); notifyOthers(g.id, u.id, `${u.name} joined ${g.name}`); }
@@ -407,7 +407,7 @@ route('POST', '/api/groups/:id/rules', async (req, res, u, b, [gid]) => {
 });
 route('POST', '/api/groups/:id/leave', async (req, res, u, b, [gid]) => {
   gid = +gid; if (!guard(res, u, gid)) return;
-  closeDays(gid);
+  closeDays(gid); ensureChallengeTasks(gid, groupDay(gid)); // today's challenge counts even if the wall was never opened
   if (one('SELECT 1 FROM debts WHERE group_id=? AND user_id=? AND paid=0', gid, u.id)) return json(res, 400, { error: 'Settle your open stakes before leaving.' });
   const t = groupDay(gid), st = one('SELECT amount FROM stakes WHERE group_id=? AND user_id=? AND day=?', gid, u.id, t);
   const todays = q('SELECT done FROM tasks WHERE group_id=? AND user_id=? AND day=?', gid, u.id, t);
@@ -615,6 +615,8 @@ route('POST', '/api/challenges/:id/join', async (req, res, u, b, [id]) => {
 route('POST', '/api/challenges/:id/leave', async (req, res, u, b, [id]) => {
   const c = one('SELECT * FROM challenges WHERE id=?', +id);
   if (!c || !isMember(c.group_id, u.id)) return json(res, 403, { error: 'Not in this group' });
+  // Settle everything up to today first, so leaving cannot erase a day that was already owed.
+  closeDays(c.group_id); ensureChallengeTasks(c.group_id, today(tzOf(c.group_id)));
   run('DELETE FROM challenge_members WHERE challenge_id=? AND user_id=?', c.id, u.id);
   json(res, 200, { ok: true });
 });
