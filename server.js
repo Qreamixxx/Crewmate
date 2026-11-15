@@ -103,11 +103,15 @@ const DEFAULT_STAKE = 2;
 const FREE_MEMBERS = Number(process.env.FREE_MEMBERS || 3); // free crews hold this many people (you and two friends); Plus removes the cap
 const DEFAULT_TZ = 'America/New_York';
 const validTz = tz => { try { new Intl.DateTimeFormat('en-US', { timeZone: tz }); return true; } catch { return false; } };
+// Test-only clock: sim/month.js sets SIM_CLOCK_FILE and writes a number of days into it to move "today" forward.
+// Unset in normal use, so the real date applies.
+const SIM_CLOCK = process.env.SIM_CLOCK_FILE;
+const simDays = () => { if (!SIM_CLOCK) return 0; try { return Number(fs.readFileSync(SIM_CLOCK, 'utf8')) || 0; } catch { return 0; } };
 const fmts = {};
 // Calendar date (YYYY-MM-DD) right now in the given IANA timezone.
 const today = tz => {
   const f = fmts[tz] || (fmts[tz] = new Intl.DateTimeFormat('en-US', { timeZone: tz, year: 'numeric', month: '2-digit', day: '2-digit' }));
-  const p = Object.fromEntries(f.formatToParts(new Date()).map(x => [x.type, x.value]));
+  const p = Object.fromEntries(f.formatToParts(new Date(Date.now() + simDays() * 864e5)).map(x => [x.type, x.value]));
   return `${p.year}-${p.month}-${p.day}`;
 };
 const groupDay = gid => today((one('SELECT tz FROM groups WHERE id=?', gid) || {}).tz || 'UTC');
