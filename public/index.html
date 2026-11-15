@@ -51,11 +51,6 @@ input{font:inherit;font-weight:600;border:3px solid #e5e7eb;border-radius:16px;p
 .confetti{position:fixed;top:30%;font-size:26px;z-index:49;animation:fall 1.8s ease-in forwards;pointer-events:none}
 .av{display:inline-grid;place-items:center;border-radius:50%;background:rgba(0,0,0,.2) center/cover no-repeat;color:#fff;font-weight:800;flex:none;border:3px solid rgba(255,255,255,.65)}
 .nm{display:flex;align-items:center;gap:10px;min-width:0}
-.lvl{display:flex;justify-content:space-between;font-size:13px;font-weight:800;margin-top:6px;opacity:.9}
-.xpbar{height:8px;border-radius:99px;background:rgba(0,0,0,.15);margin-top:4px;overflow:hidden}.xpbar i{display:block;height:100%;background:currentColor;border-radius:99px;opacity:.85}
-.badges{font-size:20px;letter-spacing:2px;margin-top:8px;min-height:24px}
-.quest{background:var(--grey);border-radius:24px;padding:16px 22px;margin-top:14px;font-weight:700}.quest .xpbar{height:12px;background:#e5e7eb}.quest .xpbar i{background:var(--green);opacity:1}
-.bgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:12px;margin-top:12px}.bg{border-radius:20px;padding:14px 16px;background:#fff;font-weight:700}.bg.off{opacity:.4;filter:grayscale(1)}.bg b{font-size:26px;display:block}
 .stat{border-radius:32px;padding:24px}.stat b{font-size:56px;letter-spacing:-2px;display:block}
 .ov{position:fixed;inset:0;background:rgba(17,24,39,.55);display:grid;place-items:center;z-index:100;padding:20px}
 .dlg{background:#fff;border-radius:28px;padding:26px;max-width:420px;width:100%;box-shadow:0 20px 60px rgba(0,0,0,.35)}.dlg p{font-weight:700;margin:0 0 10px;font-size:17px;line-height:1.4}.dlg input{margin:4px 0 14px}.dlg .row{justify-content:flex-end}
@@ -99,8 +94,6 @@ let me=null,groups=[],timer=null;
 const esc=s=>String(s).replace(/~[a-f0-9]{6}$/,'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const initial=n=>esc([...String(n).replace(/~[a-f0-9]{6}$/,'')][0]||'?').toUpperCase();
 const av=(m,sz=46)=>`<span class="av" style="width:${sz}px;height:${sz}px;font-size:${Math.round(sz*.42)}px;${m.avatar?`background-image:url(${m.avatar})`:''}">${m.avatar?'':initial(m.name)}</span>`;
-const lvlRow=m=>{const pct=m.xpNext?Math.round(100*(m.xp-m.xpFloor)/(m.xpNext-m.xpFloor)):100;return `<div class="lvl"><span>Lv ${m.level} ${esc(m.levelName)}</span><span>${m.xp} XP</span></div><div class="xpbar"><i style="width:${pct}%"></i></div>`};
-let lastXp={};
 function toast(msg,big){const t=document.createElement('div');t.className='toast'+(big?' big':'');t.textContent=msg;document.body.appendChild(t);setTimeout(()=>t.remove(),2500);
   if(big){for(let i=0;i<28;i++){const c=document.createElement('div');c.className='confetti';c.textContent=['🎉','✨','⭐','🔥','💎'][i%5];c.style.left=Math.random()*100+'%';c.style.animationDelay=Math.random()*.5+'s';document.body.appendChild(c);setTimeout(()=>c.remove(),2600)}}}
 async function api(path,body){
@@ -363,7 +356,6 @@ async function plan(gid){
     <p style="font-weight:800">${m.stake?(m.canLower?`$${m.stake} is on today by default. For the next few minutes, before you tick anything, you can change it${d.group.min_stake?` (this crew requires at least $${d.group.min_stake})`:' or pick None'}. After that the plan is locked and the stake can only go up.`:`$${m.stake} is on today. Your plan is locked: you can add tasks, not remove them, and the stake can only go up.`):d.group.min_stake?`This crew requires at least $${d.group.min_stake} a day. It goes on when you add your first task.`:m.tasks.length?'No bet today. You can put one on any time; once money is on, the plan is locked and the stake can only go up.':'A small bet goes on automatically when you add your first task. You can switch it to None for a few minutes. After that the plan is locked and the stake can only go up.'} The day ends at midnight, ${esc(d.group.tz.replace(/_/g,' '))} time.</p>
     <p class="muted" style="color:var(--ink)">Crewmate doesn't move money. It keeps the tab, and you settle up with your friends yourselves.</p></div>`;
 }
-const again=(gid)=>plan(gid);
 async function addTask(gid){try{await api(`groups/${gid}/tasks`,{title:tt.value,due:td.value||null,photo:tp.checked});plan(gid)}catch(e){document.getElementById('e').textContent=e.message}}
 
 async function renameTask(id,gid,old){const v=await ask('Edit task:',{value:old,ok:'Save',max:80});if(v===null||!v.trim())return;try{await api(`tasks/${id}/rename`,{title:v})}catch(e){say(e.message)}plan(gid)}
@@ -433,7 +425,7 @@ async function uploadAvatar(inp){
 }
 async function rmAvatar(){await api('avatar/remove',{});account()}
 async function account(){
-  const t=tgInfo||{},pr=await api('profile'),pm={name:me.name,avatar:pr.avatar},pct=pr.next?Math.round(100*(pr.xp-pr.floor)/(pr.next-pr.floor)):100;
+  const t=tgInfo||{},pr=await api('profile'),pm={name:me.name,avatar:pr.avatar};
   $app.innerHTML=nav()+`<h1>Account</h1>
   <div class="panel"><div style="display:flex;align-items:center;gap:18px;flex-wrap:wrap">${av(pm,84)}<div style="flex:1;min-width:200px"><h2 style="margin:0">${esc(me.name)}</h2></div></div>
     <p style="margin:14px 0 6px"><label class="btn light sm" style="cursor:pointer">Upload a photo<input type="file" accept="image/*" style="display:none" onchange="uploadAvatar(this)"></label> ${pr.avatar?'<button class="btn light sm" onclick="rmAvatar()">Remove photo</button>':''}</p>

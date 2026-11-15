@@ -1,1 +1,15 @@
-{ "name": "crewmate", "version": "1.0.0", "private": true, "scripts": { "start": "node server.js" }, "engines": { "node": ">=22.13" } }
+{
+  "name": "crewmate",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Crew challenges with money on them: skip it and you owe your friends.",
+  "scripts": {
+    "start": "node server.js",
+    "test": "node sim/features-test.js",
+    "sim": "node sim/simulate.js",
+    "month": "node sim/month.js"
+  },
+  "engines": {
+    "node": ">=22.13"
+  }
+}

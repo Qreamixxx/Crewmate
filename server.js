@@ -1,4 +1,15 @@
-// Crewmate: zero-dependency server (Node 22+). Run: node server.js
+// Crewmate: zero-dependency server (Node 22.13+). Run: node server.js
+//
+// Contents, in order:
+//   1. Database schema and migrations
+//   2. Browser push (VAPID signing, sending)
+//   3. Dates and timezones, streak freezes, notifications
+//   4. closeDays: scores every finished day once and turns missed stakes into debts
+//   5. Sessions, rate limits, crew challenges (helpers)
+//   6. Routes: accounts, crews, wall, tasks, stakes, challenges, ledger
+//   7. XP and badges (computed, not shown), profile photos, weekly recap
+//   8. Telegram (optional), reminders and check-in pings
+//   9. Admin stats, Stripe webhook, static files and the HTTP server
 const http = require('node:http');
 const fs = require('node:fs');
 const path = require('node:path');

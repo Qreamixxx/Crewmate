@@ -61,7 +61,6 @@ const dowOf = d => (new Date(d + 'T00:00:00Z').getUTCDay() + 6) % 7; // Monday =
       if (i === 0) { u.answerDay = startDay; continue; } // the creator is in from the start
       const x = rnd(); u.joinDay = startDay + (x < 0.6 ? 0 : x < 0.85 ? 1 : 2);
       const y = rnd(); u.answerDay = rnd() < ASSUME.neverAnswers ? null : u.joinDay + (y < ASSUME.answerDelay[0] ? 0 : y < ASSUME.answerDelay[0] + ASSUME.answerDelay[1] ? 1 : 2);
-      u.quitGap = 0;
     }
     crews.push({ plus, startDay, people, days: rr < 0.35 ? '' : rr < 0.70 ? '024' : '13', stake: plus ? 10 : (rnd() < 0.4 ? 2 : 5), gid: 0, cid: 0, code: '' });
   };
