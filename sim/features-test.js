@@ -19,14 +19,7 @@ const sql = (q, ...a) => { const db = new DatabaseSync(DB); const r = db.prepare
 const exec = q => { const db = new DatabaseSync(DB); db.exec(q); db.close(); };
 
 (async () => {
-  // fake Telegram
-  const sent = [], queue = [];
-  const tg = http.createServer((req, res) => { let b = ''; req.on('data', c => b += c); req.on('end', () => {
-    const m = req.url.split('/').pop(); const j = b ? JSON.parse(b) : {};
-    if (m === 'sendMessage') { sent.push(j); return res.end('{"ok":true}'); }
-    if (m === 'getUpdates') return setTimeout(() => { res.end(JSON.stringify({ ok: true, result: queue.splice(0) })); }, 150);
-    res.end('{"ok":true}'); }); }).listen(3333);
-  const srv = spawn('node', [path.join(__dirname, '..', 'server.js')], { env: { ...process.env, PORT, DB_FILE: DB, TELEGRAM_BOT_TOKEN: 'T', TELEGRAM_BOT_NAME: 'crewmate_bot', TELEGRAM_API: 'http://localhost:3333', TG_POLL_SECONDS: '0', STAKE_GRACE_MS: '2500', REMIND_HOUR: '0', REMIND_EVERY_MS: '400', SIGNUP_LIMIT: '1000', FREE_MEMBERS: '4', PUSH_TEST_HOST: 'localhost:3334', STRIPE_WEBHOOK_SECRET: 'whsec_test' }, stdio: ['ignore', 'pipe', 'pipe'] });
+  const srv = spawn('node', [path.join(__dirname, '..', 'server.js')], { env: { ...process.env, PORT, DB_FILE: DB, STAKE_GRACE_MS: '2500', REMIND_HOUR: '0', REMIND_EVERY_MS: '400', SIGNUP_LIMIT: '1000', FREE_MEMBERS: '4', PUSH_TEST_HOST: 'localhost:3334', STRIPE_WEBHOOK_SECRET: 'whsec_test' }, stdio: ['ignore', 'pipe', 'pipe'] });
   srv.stderr.on('data', d => { if (!/Experimental|trace-warnings/.test(d)) process.stderr.write(d); });
   await new Promise(r => srv.stdout.on('data', d => /on http/.test(d) && r()));
 
@@ -199,23 +192,19 @@ const exec = q => { const db = new DatabaseSync(DB); db.exec(q); db.close(); };
   ok('level boundaries: 0 XP is level 1', (await call(await mk('Zed'), 'GET', '/api/profile')).j.level === 1);
   ok('recap includes levels', (await call(b, 'GET', `/api/groups/${d.id}/recap`)).j.members.every(m => m.level >= 1));
 
-  // --- Telegram link + reminder + nudge notification
-  const lk = (await call(a, 'POST', '/api/telegram/link', {})).j.link; const tok = lk.split('start=')[1];
-  queue.push({ update_id: 1, message: { chat: { id: 4242 }, text: '/start ' + tok } });
-  await new Promise(r => setTimeout(r, 900));
-  ok('Telegram /start links the account', (await call(a, 'GET', '/api/me')).j.telegram.linked === true);
-  ok('bot confirmed the link', sent.some(m => /Linked/.test(m.text)));
-  // Ali has no plan today (day was shifted) but a streak? streak 0 -> expect reminder only if tasks left. Give a plan:
+  // --- evening reminder (needs a push subscription) + nudge notification
+  await call(a, 'POST', '/api/push/subscribe', { endpoint: 'http://localhost:3334/sub-ali' });
   await call(a, 'POST', `/api/groups/${g.id}/tasks`, { title: 'Read' }); await call(a, 'POST', `/api/groups/${g.id}/tasks`, { title: 'Write' });
   await new Promise(r => setTimeout(r, 1200));
-  ok('evening reminder sent for unfinished plan', sent.some(m => m.chat_id === '4242' && /2 tasks left/.test(m.text)), sent.map(m => m.text));
-  const n1 = sent.length; await new Promise(r => setTimeout(r, 1000));
-  ok('reminder is sent only once per day', sent.filter(m => /tasks left/.test(m.text)).length === 1);
+  const inbox = async u => (await call(u, 'GET', '/api/notifications')).j.items;
+  ok('evening reminder reaches the inbox for an unfinished plan', (await inbox(a)).some(n => /2 tasks left/.test(n.text)));
+  await new Promise(r => setTimeout(r, 1000));
+  ok('reminder is sent only once per day', (await inbox(a)).filter(n => /tasks left/.test(n.text)).length === 1);
   const dw2 = (await call(b, 'GET', `/api/groups/${g.id}/wall`)).j; const ali = dw2.members.find(m => m.name === 'Ali');
   await call(b, 'POST', `/api/groups/${g.id}/nudge`, { user_id: ali.id });
   await new Promise(r => setTimeout(r, 300));
-  ok('nudge reaches Telegram', sent.some(m => /nudged you/.test(m.text)));
-  await call(a, 'POST', '/api/telegram/unlink', {}); ok('unlink works', (await call(a, 'GET', '/api/me')).j.telegram.linked === false);
+  ok('nudge reaches the inbox', (await inbox(a)).some(n => /nudged you/.test(n.text)));
+  await call(a, 'POST', '/api/push/unsubscribe', { endpoint: 'http://localhost:3334/sub-ali' });
 
   // --- v5: XP cap, feed, notifications, reactions, freezes, previews, PWA, admin
   {
@@ -247,7 +236,6 @@ const exec = q => { const db = new DatabaseSync(DB); db.exec(q); db.close(); };
     ok('wall has a feed with the finished task', wj.feed.some(f => /Kim finished "Gym"/.test(f.text)) && wj.unread === nj.unread);
     await call(jo, 'POST', '/api/notifications/read', {});
     ok('mark as read clears unread', (await call(jo, 'GET', '/api/me')).j.unread === 0);
-    ok('telegram notify toggle saved', (await call(jo, 'POST', '/api/notify', { telegram: false })).s === 200 && (await call(jo, 'GET', '/api/me')).j.telegram.notify === false);
     // Reactions
     const rk = (await call(jo, 'POST', `/api/tasks/${kt.id}/react`, { emoji: '🔥' }));
     ok('friend can react to a finished task', rk.s === 200);
@@ -431,5 +419,5 @@ const exec = q => { const db = new DatabaseSync(DB); db.exec(q); db.close(); };
   }
 
   console.log(JSON.stringify({ passed: pass, failed: fail, failures }, null, 2));
-  srv.kill(); tg.close(); process.exit(fail ? 1 : 0);
+  srv.kill(); process.exit(fail ? 1 : 0);
 })();

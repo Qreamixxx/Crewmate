@@ -101,7 +101,7 @@ async function api(path,body){
   let j={};try{j=await r.json()}catch{}
   if(!r.ok)throw new Error(j.error||'Something went wrong');return j;
 }
-let tgInfo={},unread=0,lastUnread=null;
+let unread=0,lastUnread=null;
 function dlg(msg,o={}){return new Promise(done=>{const ov=document.createElement('div');ov.className='ov';
   ov.innerHTML=`<div class="dlg" role="dialog" aria-modal="true"><p>${esc(msg)}</p>${o.input?`<input id="dlgi" placeholder="${esc(o.ph||'')}" value="${esc(o.value||'')}" maxlength="${o.max||200}">`:''}<div class="row">${o.cancel===false?'':'<button class="btn light sm" data-k="0">Cancel</button>'}<button class="btn blue sm" data-k="1">${esc(o.ok||'OK')}</button></div></div>`;
   const inp=ov.querySelector('input'),fin=ok=>{document.removeEventListener('keydown',kd);ov.remove();done(ok?(o.input?inp.value:true):(o.input?null:false))};
@@ -111,7 +111,7 @@ function dlg(msg,o={}){return new Promise(done=>{const ov=document.createElement
 const ask=(msg,o={})=>dlg(msg,{...o,input:true}),confirmBox=(msg,ok)=>dlg(msg,{ok:ok||'Yes'}),say=msg=>dlg(msg,{cancel:false});
 const ago=at=>{const m=Math.max(0,Math.round((Date.now()-at)/60000));return m<1?'just now':m<60?m+' min ago':m<1440?Math.round(m/60)+' h ago':Math.round(m/1440)+' d ago'};
 const shareUrl=(k,v)=>location.origin+'/'+k+'/'+v;
-async function boot(){const j=await api('me');me=j.user;groups=j.groups||[];tgInfo=j.telegram||{};unread=j.unread||0;try{pushSt=await pushState()}catch{}render()}
+async function boot(){const j=await api('me');me=j.user;groups=j.groups||[];unread=j.unread||0;try{pushSt=await pushState()}catch{}render()}
 (function(){const m=/^\/(join|r)\/([A-Za-z0-9]+)$/.exec(location.pathname);if(m)history.replaceState(null,'','/#/'+m[1]+'/'+m[2])})();
 window.addEventListener('hashchange',render);
 if('serviceWorker' in navigator)addEventListener('load',()=>navigator.serviceWorker.register('/sw.js').catch(()=>{}));
@@ -204,7 +204,7 @@ function authView(mode,err='',note=''){
 }
 async function submitAuth(kind){
   try{const j=await api(kind,{name:n.value,password:p.value});
-    if(j.recovery){const jj=await api('me');me=jj.user;groups=jj.groups||[];tgInfo=jj.telegram||{};
+    if(j.recovery){const jj=await api('me');me=jj.user;groups=jj.groups||[];
       $app.innerHTML=`<nav><a class="logo" href="#/">Crewmate</a></nav><div class="auth"><h2>Save your recovery code</h2><p>If you forget your password, this code is the only way back in. We show it once.</p>
       <div class="banner" style="justify-content:center"><b style="font-size:34px;letter-spacing:2px">${j.recovery}</b></div><p class="small">Screenshot it or write it down.</p><p><button class="btn blue" onclick="render()">I saved it</button></p></div>`;return}
     await boot()}catch(e){document.getElementById('e').textContent=e.message}
@@ -411,7 +411,6 @@ async function inbox(){
   $app.innerHTML=nav()+`<h1>Notifications</h1>${j.items.map(n=>`<div class="inb ${n.read?'':'new'}">${esc(n.text)}<div class="ago">${esc(n.group_name||'')} · ${ago(n.at)}</div></div>`).join('')||'<p class="muted">Nothing yet. When friends finish tasks, you will see it here.</p>'}`;
   if(j.unread){await api('notifications/read',{});unread=0;lastUnread=0;const b=document.querySelector('.bell b');if(b)b.remove()}
 }
-async function setNotify(on){try{await api('notify',{telegram:on});tgInfo.notify=on;account()}catch(e){say(e.message)}}
 async function uploadAvatar(inp){
   const f=inp.files[0];if(!f)return;
   const rd=new FileReader();
@@ -425,19 +424,16 @@ async function uploadAvatar(inp){
 }
 async function rmAvatar(){await api('avatar/remove',{});account()}
 async function account(){
-  const t=tgInfo||{},pr=await api('profile'),pm={name:me.name,avatar:pr.avatar};
+  const pr=await api('profile'),pm={name:me.name,avatar:pr.avatar};
   $app.innerHTML=nav()+`<h1>Account</h1>
   <div class="panel"><div style="display:flex;align-items:center;gap:18px;flex-wrap:wrap">${av(pm,84)}<div style="flex:1;min-width:200px"><h2 style="margin:0">${esc(me.name)}</h2></div></div>
     <p style="margin:14px 0 6px"><label class="btn light sm" style="cursor:pointer">Upload a photo<input type="file" accept="image/*" style="display:none" onchange="uploadAvatar(this)"></label> ${pr.avatar?'<button class="btn light sm" onclick="rmAvatar()">Remove photo</button>':''}</p>
 </div><div class="panel"><h2>Change password</h2><input id="op" type="password" placeholder="Current password"><input id="np" type="password" placeholder="New password (6+ characters)"><p class="err" id="e"></p><button class="btn blue" onclick="chPw()">Save</button></div>
   <div class="panel"><h2>Notifications</h2><p class="muted">A reminder before your check-in opens, a heads-up in the evening when money is still on the line, and a note when a friend shows up or skips.</p>${pushSt==='on'?'<p><b>On for this device ✓</b></p><button class="btn light" onclick="pushOff()">Turn off</button>':pushSt==='off'?'<button class="btn blue" onclick="pushOn()">Turn on notifications</button>':pushSt==='denied'?'<p><b>Notifications are blocked for this site.</b> Allow them in your browser settings for this site, then reload.</p>':'<p><b>This browser cannot show notifications.</b> On iPhone, add Crewmate to your home screen first, then open it from there.</p>'}</div>
-  ${t.enabled?`<div class="panel"><h2>Telegram reminders</h2><p class="muted">Get a message when a plan is unfinished in the evening, when a friend nudges you, and when friends finish tasks.</p>${t.linked?`<p><b>Connected ✓</b></p><p><label style="font-weight:700"><input type="checkbox" style="width:auto;margin:0 8px 0 0" ${t.notify!==false?'checked':''} onchange="setNotify(this.checked)">Message me when a friend finishes a task</label></p><button class="btn light" onclick="tgUnlink()">Disconnect</button>`:`<button class="btn blue" onclick="tgLink()">Connect Telegram</button>`}</div>`:''}
   <div class="panel"><h2>Recovery code</h2><p class="muted">Make a new code if you lost yours or your account has none. The old one stops working.</p><input id="rp" type="password" placeholder="Your password"><button class="btn light" onclick="newRec()">Make a new recovery code</button></div>
   <div class="panel"><button class="btn light" onclick="logout()">Log out</button></div>`;
 }
 async function chPw(){try{await api('password',{old:op.value,password:np.value});await say('Password changed.');go('#/')}catch(e){document.getElementById('e').textContent=e.message}}
 async function newRec(){try{const j=await api('recovery/new',{password:rp.value});await say('Your new recovery code, shown once. Write it down: '+j.recovery)}catch(e){say(e.message)}}
-async function tgLink(){try{const j=await api('telegram/link',{});window.open(j.link,'_blank');say('Press Start in Telegram, then come back and refresh.')}catch(e){say(e.message)}}
-async function tgUnlink(){await api('telegram/unlink',{});await boot();go('#/account')}
 boot();
 </script></body></html>

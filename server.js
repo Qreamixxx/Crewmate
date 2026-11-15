@@ -8,7 +8,7 @@
 //   5. Sessions, rate limits, crew challenges (helpers)
 //   6. Routes: accounts, crews, wall, tasks, stakes, challenges, ledger
 //   7. XP and badges (computed, not shown), profile photos, weekly recap
-//   8. Telegram (optional), reminders and check-in pings
+//   8. Reminders and check-in pings
 //   9. Admin stats, Stripe webhook, static files and the HTTP server
 const http = require('node:http');
 const fs = require('node:fs');
@@ -51,8 +51,6 @@ for (const sql of [
   "ALTER TABLE groups ADD COLUMN plus INTEGER DEFAULT 0",
   "CREATE UNIQUE INDEX IF NOT EXISTS debts_once ON debts(group_id,user_id,day)",
   "ALTER TABLE users ADD COLUMN rec_hash TEXT",
-  "ALTER TABLE users ADD COLUMN tg_chat TEXT",
-  "ALTER TABLE users ADD COLUMN tg_token TEXT",
   "ALTER TABLE sessions ADD COLUMN created INTEGER DEFAULT 0",
   "ALTER TABLE groups ADD COLUMN plus_sub TEXT",
   "ALTER TABLE groups ADD COLUMN recap_token TEXT",
@@ -62,7 +60,6 @@ for (const sql of [
   "ALTER TABLE groups ADD COLUMN owner INTEGER",
   "ALTER TABLE stakes ADD COLUMN set_at INTEGER DEFAULT 0",
   "ALTER TABLE users ADD COLUMN created INTEGER DEFAULT 0",
-  "ALTER TABLE users ADD COLUMN notify_tg INTEGER DEFAULT 1",
   "ALTER TABLE users ADD COLUMN avatar TEXT",
   "ALTER TABLE users ADD COLUMN avatar_v INTEGER DEFAULT 0",
   "CREATE INDEX IF NOT EXISTS tasks_by_day ON tasks(group_id,user_id,day)",
@@ -135,8 +132,6 @@ const freezeAllowance = plus => (plus ? 3 : 1); // streak freezes per week: 1 fr
 function freezesUsedThisWeek(gid, uid, upToDay) { return one('SELECT COUNT(*) c FROM freezes WHERE group_id=? AND user_id=? AND day>=? AND day<=?', gid, uid, weekStartOf(upToDay), upToDay).c; }
 function notifyUser(uid, gid, text) {
   run('INSERT INTO notifications(user_id,group_id,text,at) VALUES(?,?,?,?)', uid, gid, text, Date.now());
-  const r = one('SELECT notify_tg FROM users WHERE id=?', uid);
-  if (r && r.notify_tg) tgSend(uid, text);
   pushSend(uid);
 }
 function notifyOthers(gid, fromUid, text) { for (const m of q('SELECT user_id FROM members WHERE group_id=? AND user_id<>?', gid, fromUid)) notifyUser(m.user_id, gid, text); }
@@ -340,8 +335,7 @@ route('POST', '/api/logout', async (req, res) => {
 });
 route('GET', '/api/me', async (req, res, u) => {
   if (!u) return json(res, 200, { user: null });
-  const ur = one('SELECT tg_chat,notify_tg FROM users WHERE id=?', u.id) || {};
-  json(res, 200, { user: u, unread: one('SELECT COUNT(*) c FROM notifications WHERE user_id=? AND read=0', u.id).c, telegram: { enabled: !!TG_TOKEN, linked: !!ur.tg_chat, notify: ur.notify_tg !== 0 }, groups: q('SELECT g.id,g.name,g.code,g.sample FROM groups g JOIN members m ON m.group_id=g.id WHERE m.user_id=? ORDER BY g.id', u.id) });
+  json(res, 200, { user: u, unread: one('SELECT COUNT(*) c FROM notifications WHERE user_id=? AND read=0', u.id).c, groups: q('SELECT g.id,g.name,g.code,g.sample FROM groups g JOIN members m ON m.group_id=g.id WHERE m.user_id=? ORDER BY g.id', u.id) });
 });
 
 route('POST', '/api/groups', async (req, res, u, b) => {
@@ -526,7 +520,6 @@ route('GET', '/api/notifications', async (req, res, u) => {
     items: q('SELECT n.id,n.text,n.at,n.read,g.name AS group_name FROM notifications n LEFT JOIN groups g ON g.id=n.group_id WHERE n.user_id=? ORDER BY n.id DESC LIMIT 40', u.id) });
 });
 route('POST', '/api/notifications/read', async (req, res, u) => { run('UPDATE notifications SET read=1 WHERE user_id=?', u.id); json(res, 200, { ok: true }); });
-route('POST', '/api/notify', async (req, res, u, b) => { run('UPDATE users SET notify_tg=? WHERE id=?', b.telegram ? 1 : 0, u.id); json(res, 200, { ok: true }); });
 route('POST', '/api/tasks/:id/rename', async (req, res, u, b, [id]) => {
   const t = one('SELECT * FROM tasks WHERE id=?', +id);
   if (!t || t.user_id !== u.id || t.day !== groupDay(t.group_id)) return json(res, 403, { error: 'Only your own tasks for today' });
@@ -746,28 +739,10 @@ route('GET', '/api/groups/:id/recap', async (req, res, u, b, [gid]) => {
   json(res, 200, recapData(gid));
 });
 
-// ---- Telegram: optional reminders. Set TELEGRAM_BOT_TOKEN and TELEGRAM_BOT_NAME to switch on.
-const TG_TOKEN = process.env.TELEGRAM_BOT_TOKEN, TG_API = process.env.TELEGRAM_API || 'https://api.telegram.org';
-async function tgCall(method, body) {
-  const r = await fetch(`${TG_API}/bot${TG_TOKEN}/${method}`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) });
-  return r.json();
-}
-function tgSend(uid, text) {
-  if (!TG_TOKEN) return;
-  const row = one('SELECT tg_chat FROM users WHERE id=?', uid);
-  if (row && row.tg_chat) tgCall('sendMessage', { chat_id: row.tg_chat, text }).catch(e => console.error('telegram', e.message));
-}
-route('POST', '/api/telegram/link', async (req, res, u) => {
-  if (!TG_TOKEN) return json(res, 400, { error: 'Telegram is not set up on this server' });
-  const tok = crypto.randomBytes(8).toString('hex');
-  run('UPDATE users SET tg_token=? WHERE id=?', tok, u.id);
-  json(res, 200, { link: `https://t.me/${process.env.TELEGRAM_BOT_NAME || 'your_bot'}?start=${tok}` });
-});
-route('POST', '/api/telegram/unlink', async (req, res, u) => { run('UPDATE users SET tg_chat=NULL, tg_token=NULL WHERE id=?', u.id); json(res, 200, { ok: true }); });
 const localHour = tz => Number(new Intl.DateTimeFormat('en-US', { timeZone: tz, hour: '2-digit', hour12: false }).format(new Date())) % 24;
 function sendReminders() {
   const hourFrom = Number(process.env.REMIND_HOUR ?? 19);
-  for (const m of q("SELECT m.user_id,m.group_id,g.name gname,g.tz FROM members m JOIN groups g ON g.id=m.group_id JOIN users u ON u.id=m.user_id WHERE (u.tg_chat IS NOT NULL OR EXISTS(SELECT 1 FROM push_subs p WHERE p.user_id=u.id)) AND g.sample=0")) {
+  for (const m of q("SELECT m.user_id,m.group_id,g.name gname,g.tz FROM members m JOIN groups g ON g.id=m.group_id JOIN users u ON u.id=m.user_id WHERE EXISTS(SELECT 1 FROM push_subs p WHERE p.user_id=u.id) AND g.sample=0")) {
     const tz = m.tz || 'UTC';
     if (localHour(tz) < hourFrom) continue;
     const t = today(tz);
@@ -782,8 +757,8 @@ function sendReminders() {
   }
   sendCheckinPings();
 }
-// A reminder lands in the inbox and goes out on every channel the person has switched on.
-function remind(uid, gid, text) { run('INSERT INTO notifications(user_id,group_id,text,at) VALUES(?,?,?,?)', uid, gid, text, Date.now()); tgSend(uid, text); pushSend(uid); }
+// A reminder lands in the inbox and goes out as a browser push.
+function remind(uid, gid, text) { run('INSERT INTO notifications(user_id,group_id,text,at) VALUES(?,?,?,?)', uid, gid, text, Date.now()); pushSend(uid); }
 // "It's time": one message shortly before a timed task's check-in opens (or as it opens, if the server was late).
 const PING_MIN = Number(process.env.CHECKIN_PING_MIN || 30);
 function sendCheckinPings() {
@@ -801,24 +776,6 @@ function sendCheckinPings() {
     remind(x.user_id, x.group_id, left > WINDOW_MIN ? `"${x.title}" in ${left} minutes.${money}` : `Check-in for "${x.title}" is open until ${fmtMin(toMin(x.due) + WINDOW_MIN)}.${money}`);
   }
 }
-async function tgPoll() {
-  let offset = 0;
-  for (;;) {
-    try {
-      const j = await tgCall('getUpdates', { offset, timeout: Number(process.env.TG_POLL_SECONDS ?? 25) });
-      for (const up of j.result || []) {
-        offset = up.update_id + 1;
-        const msg = up.message; if (!msg || !msg.text) continue;
-        const m = /^\/start\s+([a-f0-9]+)/.exec(msg.text);
-        if (m) {
-          const r = run('UPDATE users SET tg_chat=?, tg_token=NULL WHERE tg_token=?', String(msg.chat.id), m[1]);
-          await tgCall('sendMessage', { chat_id: msg.chat.id, text: r.changes ? 'Linked. I will remind you when a plan is unfinished.' : 'That link has expired. Open Crewmate and press Connect Telegram again.' });
-        } else if (/^\/stop/.test(msg.text)) { run('UPDATE users SET tg_chat=NULL WHERE tg_chat=?', String(msg.chat.id)); await tgCall('sendMessage', { chat_id: msg.chat.id, text: 'Reminders off.' }); }
-      }
-    } catch (e) { console.error('telegram poll', e.message); await new Promise(r => setTimeout(r, 5000)); }
-  }
-}
-if (TG_TOKEN) tgPoll();
 setInterval(() => { try { sendReminders(); } catch (e) { console.error(e); } }, Number(process.env.REMIND_EVERY_MS || 60000));
 
 // Private numbers for the pitch. Off unless ADMIN_TOKEN is set; the page asks for the token.
@@ -837,7 +794,7 @@ function adminStats() {
     fullDays: c(`SELECT COUNT(*) c FROM results r JOIN users u ON u.id=r.user_id WHERE r.status='done' AND ${real}`),
     dollarsStaked: c(`SELECT COALESCE(SUM(s.amount),0) c FROM stakes s JOIN users u ON u.id=s.user_id WHERE ${real}`),
     dollarsLost: c(`SELECT COALESCE(SUM(d.amount),0) c FROM debts d JOIN users u ON u.id=d.user_id WHERE ${real}`), dollarsSettled: c(`SELECT COALESCE(SUM(d.amount),0) c FROM debts d JOIN users u ON u.id=d.user_id WHERE d.paid=1 AND ${real}`),
-    reactions: c('SELECT COUNT(*) c FROM reactions'), nudges: c('SELECT COUNT(*) c FROM nudges'), telegramLinked: c('SELECT COUNT(*) c FROM users WHERE tg_chat IS NOT NULL'),
+    reactions: c('SELECT COUNT(*) c FROM reactions'), nudges: c('SELECT COUNT(*) c FROM nudges'),
     perDay: q(`SELECT t.day, COUNT(DISTINCT t.user_id) people, COUNT(*) tasks, SUM(t.done) ticked FROM tasks t JOIN users u ON u.id=t.user_id WHERE ${real} AND t.day>=? GROUP BY t.day ORDER BY t.day`, since(13)),
   };
 }

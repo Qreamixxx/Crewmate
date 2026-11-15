@@ -72,7 +72,6 @@ Any host that runs Node 22.13+ works. Start command: `node server.js`. Put `DB_F
 | `SIGNUP_LIMIT` | Sign-ups per address per 10 minutes (default 20). Behind a host's proxy the visitor's address is read from the proxy's headers |
 | `FREEZES_OFF` | Set to 1 to turn streak freezes off |
 | `ADMIN_TOKEN` | Enables `/admin.html` |
-| `TELEGRAM_BOT_TOKEN`, `TELEGRAM_BOT_NAME` | Optional Telegram reminders; hidden in the app unless set |
 | `SIM_CLOCK_FILE` | Test only: lets `sim/month.js` move the server's date forward. Leave unset |
 
 The app runs without any of them. Without the Stripe variables the Plus page shows "Checkout opens soon".
