@@ -70,7 +70,7 @@ const run = (sql, ...a) => db.prepare(sql).run(...a);
 const FREEZES_OFF = process.env.FREEZES_OFF === '1'; // used by the simulation, which models plain results only
 const GRACE_MS = Number(process.env.STAKE_GRACE_MS || 600000); // a new stake (and its tasks) can be changed for 10 minutes if nothing is ticked yet
 const DEFAULT_STAKE = 2;
-const FREE_MEMBERS = 4; // free groups hold this many people; Plus removes the cap
+const FREE_MEMBERS = Number(process.env.FREE_MEMBERS || 2); // free crews hold this many people (you and one friend); Plus removes the cap
 const DEFAULT_TZ = 'America/New_York';
 const validTz = tz => { try { new Intl.DateTimeFormat('en-US', { timeZone: tz }); return true; } catch { return false; } };
 const fmts = {};

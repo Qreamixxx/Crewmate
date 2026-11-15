@@ -29,7 +29,7 @@ Payments (optional, the app runs without them):
 - A group's day ends at midnight in the timezone of whoever created it (taken from their browser, fixed at creation). Groups made before this change stay on UTC.
 - Default bet: the first task of the day puts $2 (or the crew minimum) on it. For 10 minutes, before anything is ticked, it can be lowered or switched to None and staked tasks can be removed. After that the stake only goes up and the plan is locked. The crew creator can set a minimum daily stake ($0 to $5 free, up to $50 on Plus). The minimum applies on days you post a plan; not posting stays visible on the wall.
 - Stake rules (older, still true after the grace window): you need a plan before you can stake; once staked, the stake only goes up and tasks cannot be removed; a staked day with no plan counts as missed. Only a friend who was in the group on the missed day can confirm payment.
-- Plus: free groups hold 4 people and $2/$5 stakes; Plus lifts the member cap and adds $10 stakes. It is switched on only by a signed Stripe `checkout.session.completed` webhook.
+- Plus: free crews hold 2 people (`FREE_MEMBERS` changes that; the tests run with 4), one challenge at a time and $2/$5 stakes; Plus lifts the member cap and adds $10 stakes. It is switched on only by a signed Stripe `checkout.session.completed` webhook.
 - `public/index.html`: single-page frontend, no build step. The wall refreshes every 8 s.
 - Nudge: a friend can poke someone who has not finished today (one nudge per friend per day). The invite link shows the group name before sign-up. Login is limited to 8 wrong passwords per 10 minutes.
 

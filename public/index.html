@@ -167,7 +167,7 @@ function authView(mode,err='',note=''){
     <div class="sec"><h2>Where does the money go?</h2><p class="muted lead">Never to us.</p>
     <div class="two">
       <div class="panel" style="margin-top:0"><b style="font-size:20px">Stakes stay between friends</b><p style="font-weight:600;line-height:1.5">Crewmate keeps the tab: who skipped, how much, and whether it's settled. You pay each other the way you already do, and a friend confirms it. We never hold the money and never take a cut.</p></div>
-      <div class="panel" style="margin-top:0"><b style="font-size:20px">We charge for the crew, not the pot</b><p style="font-weight:600;line-height:1.5">Free covers a crew of up to 4, one challenge at a time and stakes up to $5. Plus is one subscription for the whole crew: more friends, more challenges and bigger stakes.</p></div>
+      <div class="panel" style="margin-top:0"><b style="font-size:20px">We charge for the crew, not the pot</b><p style="font-weight:600;line-height:1.5">Free covers you and one friend, one challenge at a time and stakes up to $5. Plus is one subscription for the whole crew: as many friends as you like, more challenges and bigger stakes.</p></div>
     </div></div>
 
     <div class="sec"><h2>Questions</h2>
@@ -339,7 +339,7 @@ async function plus(gid){
   <p class="muted" style="margin:10px 0 0">One person upgrades and everyone in ${esc(g.name)} gets Plus. We charge for the crew, never a cut of the stakes.</p></div>
   <div class="plans">
     <div class="plan" style="background:var(--grey)"><div class="pt">Free</div><div class="pp">$0</div><div class="sub" style="margin-bottom:18px">For a crew that is just getting started</div>
-      ${li('Up to '+g.freeMembers+' friends')}${li('One crew challenge at a time')}${li('Stakes up to $5')}${li('1 streak freeze a week')}${li('Wall, tab and weekly recap')}
+      ${li(g.freeMembers==2?'You and one friend':'A crew of '+g.freeMembers)}${li('One crew challenge at a time')}${li('Stakes up to $5')}${li('1 streak freeze a week')}${li('Wall, tab and weekly recap')}
       ${g.plus?'':'<div class="pill" style="margin-top:18px">Your crew is here</div>'}</div>
     <div class="plan" style="background:var(--ink);color:#fff"><div class="pt">Plus <span class="pill" style="background:var(--yellow);color:var(--ink);margin-left:8px">covers everyone</span></div><div class="pp">${g.price?esc(g.price):'$5<span style="font-size:20px;letter-spacing:0;opacity:.7"> / month</span>'}</div><div class="sub" style="margin-bottom:18px">For a crew that means it</div>
       ${li('Unlimited friends','Your crew has '+n+(n==1?' person':' people')+' now')}${li('Unlimited crew challenges','Run the 6 a.m. run and the gym days at once')}${li('Stakes up to $50','For promises that need a real price')}${li('3 streak freezes a week')}${li('Everything in Free')}

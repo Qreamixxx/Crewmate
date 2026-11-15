@@ -31,7 +31,7 @@ function shiftDays(n = 1) {
 }
 
 (async () => {
-  const srv = spawn('node', [path.join(__dirname, '..', 'server.js')], { env: { ...process.env, PORT, DB_FILE: DB, SIGNUP_LIMIT: '100000', FREEZES_OFF: '1' }, stdio: ['ignore', 'pipe', 'pipe'] });
+  const srv = spawn('node', [path.join(__dirname, '..', 'server.js')], { env: { ...process.env, PORT, DB_FILE: DB, SIGNUP_LIMIT: '100000', FREEZES_OFF: '1', FREE_MEMBERS: '4' }, stdio: ['ignore', 'pipe', 'pipe'] });
   srv.stderr.on('data', d => { if (!/ExperimentalWarning|trace-warnings/.test(d)) process.stderr.write(d); });
   await new Promise(r => srv.stdout.on('data', d => /on http/.test(d) && r()));
   const T0 = Date.now();

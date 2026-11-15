@@ -26,7 +26,7 @@ const exec = q => { const db = new DatabaseSync(DB); db.exec(q); db.close(); };
     if (m === 'sendMessage') { sent.push(j); return res.end('{"ok":true}'); }
     if (m === 'getUpdates') return setTimeout(() => { res.end(JSON.stringify({ ok: true, result: queue.splice(0) })); }, 150);
     res.end('{"ok":true}'); }); }).listen(3333);
-  const srv = spawn('node', [path.join(__dirname, '..', 'server.js')], { env: { ...process.env, PORT, DB_FILE: DB, TELEGRAM_BOT_TOKEN: 'T', TELEGRAM_BOT_NAME: 'crewmate_bot', TELEGRAM_API: 'http://localhost:3333', TG_POLL_SECONDS: '0', STAKE_GRACE_MS: '2500', REMIND_HOUR: '0', REMIND_EVERY_MS: '400', SIGNUP_LIMIT: '1000' }, stdio: ['ignore', 'pipe', 'pipe'] });
+  const srv = spawn('node', [path.join(__dirname, '..', 'server.js')], { env: { ...process.env, PORT, DB_FILE: DB, TELEGRAM_BOT_TOKEN: 'T', TELEGRAM_BOT_NAME: 'crewmate_bot', TELEGRAM_API: 'http://localhost:3333', TG_POLL_SECONDS: '0', STAKE_GRACE_MS: '2500', REMIND_HOUR: '0', REMIND_EVERY_MS: '400', SIGNUP_LIMIT: '1000', FREE_MEMBERS: '4' }, stdio: ['ignore', 'pipe', 'pipe'] });
   srv.stderr.on('data', d => { if (!/Experimental|trace-warnings/.test(d)) process.stderr.write(d); });
   await new Promise(r => srv.stdout.on('data', d => /on http/.test(d) && r()));
 
