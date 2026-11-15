@@ -34,6 +34,8 @@ Payments (optional, the app runs without them):
 - Nudge: a friend can poke someone who has not finished today (one nudge per friend per day). The invite link shows the group name before sign-up. Login is limited to 8 wrong passwords per 10 minutes.
 
 ## Gamification and profile pictures
+XP, levels, badges and the weekly quest are still computed by the server but are no longer shown on any screen: the product is a commitment tool, and the streak, the feed and the money carry it. The rules below describe the data, should the layer come back.
+
 - XP is computed from the data (never stored): 10 per ticked task (at most 5 tasks a day count, so padding a plan earns nothing), 25 per fully finished day, 15 more when money was on that day, 3 per nudge or cheer (max 30). Levels at 0/50/150/300/500/800/1200/1800/2600/3600 XP: Rookie, Regular, Grinder, Machine, Veteran, Beast, Legend, Mythic, Immortal, Mastermind.
 - 10 badges (first win, 3/7/21/30-day streaks, comeback, high roller, skin in the game, paid up, hype man), shown on each card and on the Account page with locked ones greyed.
 - Weekly crew quest: the group ticks 10 tasks per member together; a progress bar sits on the wall.
@@ -68,7 +70,7 @@ Payments (optional, the app runs without them):
 
 ## Tests
 - `node sim/simulate.js`: 100 users, 25 groups, 14 days (details below).
-- `node sim/features-test.js`: 167 checks for browser push (signed with the server key, address allow-list, dropped subscriptions), the pre-check-in reminder, crew challenges (join, floor on the stake, skip without opening the app, leave, end), proof by check-in time and photo, XP cap, reactions, feed, notifications, freezes, link previews, PWA files, admin gate, recovery codes, password change, session expiry, invite reset, leave rules, custom stakes and the Plus gate, doubts, public recap, sample group, Telegram link and reminders (against a fake Telegram server).
+- `node sim/features-test.js`: 179 checks for the Stripe webhook (signature, replay, unpaid, cancel) and what Plus unlocks, browser push (signed with the server key, address allow-list, dropped subscriptions), the pre-check-in reminder, crew challenges (join, floor on the stake, skip without opening the app, leave, end), proof by check-in time and photo, XP cap, reactions, feed, notifications, freezes, link previews, PWA files, admin gate, recovery codes, password change, session expiry, invite reset, leave rules, custom stakes and the Plus gate, doubts, public recap, sample group, Telegram link and reminders (against a fake Telegram server).
 
 ## Simulation
 `node sim/simulate.js` starts the server on a temp database and runs 100 users in 25 groups for 14 days (about 9,500 requests). Days are advanced by shifting dates in the database. It checks every user-day against an independent model of the rules (results, debts, streaks), and fires cheating attempts that must all be refused. Last run: `sim/last-run.json`. User behaviour (reliability, drop-out, who stakes) is assumed, not measured, so the product numbers are illustrative; the correctness checks are real.

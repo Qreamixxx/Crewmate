@@ -26,7 +26,7 @@ const exec = q => { const db = new DatabaseSync(DB); db.exec(q); db.close(); };
     if (m === 'sendMessage') { sent.push(j); return res.end('{"ok":true}'); }
     if (m === 'getUpdates') return setTimeout(() => { res.end(JSON.stringify({ ok: true, result: queue.splice(0) })); }, 150);
     res.end('{"ok":true}'); }); }).listen(3333);
-  const srv = spawn('node', [path.join(__dirname, '..', 'server.js')], { env: { ...process.env, PORT, DB_FILE: DB, TELEGRAM_BOT_TOKEN: 'T', TELEGRAM_BOT_NAME: 'crewmate_bot', TELEGRAM_API: 'http://localhost:3333', TG_POLL_SECONDS: '0', STAKE_GRACE_MS: '2500', REMIND_HOUR: '0', REMIND_EVERY_MS: '400', SIGNUP_LIMIT: '1000', FREE_MEMBERS: '4', PUSH_TEST_HOST: 'localhost:3334' }, stdio: ['ignore', 'pipe', 'pipe'] });
+  const srv = spawn('node', [path.join(__dirname, '..', 'server.js')], { env: { ...process.env, PORT, DB_FILE: DB, TELEGRAM_BOT_TOKEN: 'T', TELEGRAM_BOT_NAME: 'crewmate_bot', TELEGRAM_API: 'http://localhost:3333', TG_POLL_SECONDS: '0', STAKE_GRACE_MS: '2500', REMIND_HOUR: '0', REMIND_EVERY_MS: '400', SIGNUP_LIMIT: '1000', FREE_MEMBERS: '4', PUSH_TEST_HOST: 'localhost:3334', STRIPE_WEBHOOK_SECRET: 'whsec_test' }, stdio: ['ignore', 'pipe', 'pipe'] });
   srv.stderr.on('data', d => { if (!/Experimental|trace-warnings/.test(d)) process.stderr.write(d); });
   await new Promise(r => srv.stdout.on('data', d => /on http/.test(d) && r()));
 
@@ -108,9 +108,9 @@ const exec = q => { const db = new DatabaseSync(DB); db.exec(q); db.close(); };
   const d = (await call(b, 'POST', '/api/demo', { tz: 'America/New_York' })).j;
   const dw = (await call(b, 'GET', `/api/groups/${d.id}/wall`)).j;
   ok('sample group has 4 members and is flagged', dw.members.length === 4 && dw.group.sample === 1);
-  const dana = dw.members.find(m => m.name.startsWith('Dana')), tim = dw.members.find(m => m.name.startsWith('Timur'));
+  const dana = dw.members.find(m => m.name.startsWith('Dana')), tim = dw.members.find(m => m.name.startsWith('Jess'));
   ok('sample Dana has a 22-day streak (21 + today)', dana.streak === 22, dana.streak);
-  ok('sample Timur is silent 3 days', tim.silent === 3, tim.silent);
+  ok('sample Jess is silent 3 days', tim.silent === 3, tim.silent);
   const dl = (await call(b, 'GET', `/api/groups/${d.id}/ledger`)).j;
   ok('sample ledger has open and paid debts', dl.debts.some(x => x.paid) && dl.debts.some(x => !x.paid));
   ok('sample friends cannot log in', (await call({}, 'POST', '/api/login', { name: dana.name, password: 'no-login' })).s === 400);
@@ -194,7 +194,7 @@ const exec = q => { const db = new DatabaseSync(DB); db.exec(q); db.close(); };
   const sdw = (await call(b, 'GET', `/api/groups/${d.id}/wall`)).j;
   const sd = sdw.members.find(m => m.name.startsWith('Dana'));
   ok('sample Dana is a high level with streak badges', sd.level >= 4 && sd.badges.includes('streak21') && sd.badges.includes('first_win'), [sd.level, sd.badges]);
-  ok('sample Arman earned Paid up and Comeback', (() => { const a2 = sdw.members.find(m => m.name.startsWith('Arman')); return a2.badges.includes('paid_up') || a2.badges.includes('comeback'); })());
+  ok('sample Marcus earned Paid up and Comeback', (() => { const a2 = sdw.members.find(m => m.name.startsWith('Marcus')); return a2.badges.includes('paid_up') || a2.badges.includes('comeback'); })());
   ok('crew quest has a goal of 10 per member', sdw.group.quest.goal === 40 && sdw.group.quest.done >= 20, sdw.group.quest);
   ok('level boundaries: 0 XP is level 1', (await call(await mk('Zed'), 'GET', '/api/profile')).j.level === 1);
   ok('recap includes levels', (await call(b, 'GET', `/api/groups/${d.id}/recap`)).j.members.every(m => m.level >= 1));
@@ -408,10 +408,27 @@ const exec = q => { const db = new DatabaseSync(DB); db.exec(q); db.close(); };
     ps.close();
   }
 
-  // --- Stripe lifecycle
+  // --- Stripe lifecycle: Plus is switched on only by a correctly signed, paid event
   const crypto = require('node:crypto');
-  // webhook secret is not set in this run: must refuse
-  ok('stripe webhook refuses when not configured', (await call({}, 'POST', '/api/stripe/webhook', {})).s === 400);
+  {
+    const SECRET = 'whsec_test', nowS = () => Math.floor(Date.now() / 1000);
+    const hook = async (ev, { secret = SECRET, ts = nowS() } = {}) => call({}, 'POST', '/api/stripe/webhook', ev, { 'stripe-signature': `t=${ts},v1=${crypto.createHmac('sha256', secret).update(ts + '.' + JSON.stringify(ev)).digest('hex')}` });
+    const plusOf = gid => sql('SELECT plus FROM groups WHERE id=?', gid)[0].plus;
+    const o1 = await mk('Olga'), o2 = await mk('Omar');
+    const g = (await call(o1, 'POST', '/api/groups', { name: 'Pay crew', tz: 'UTC' })).j; await call(o2, 'POST', '/api/join', { code: g.code });
+    await call(o1, 'POST', `/api/groups/${g.id}/tasks`, { title: 'Run' });
+    ok('stake above $5 is refused before the crew pays', (await call(o1, 'POST', `/api/groups/${g.id}/stake`, { amount: 10 })).s === 402);
+    const paid = { type: 'checkout.session.completed', data: { object: { payment_status: 'paid', client_reference_id: String(g.id), subscription: 'sub_test_1' } } };
+    ok('unsigned webhook is refused', (await call({}, 'POST', '/api/stripe/webhook', paid)).s === 400 && plusOf(g.id) === 0);
+    ok('webhook signed with the wrong secret is refused', (await hook(paid, { secret: 'whsec_wrong' })).s === 400 && plusOf(g.id) === 0);
+    ok('an old signed webhook cannot be replayed', (await hook(paid, { ts: nowS() - 3600 })).s === 400 && plusOf(g.id) === 0);
+    ok('an unpaid checkout does not unlock Plus', (await hook({ type: 'checkout.session.completed', data: { object: { payment_status: 'unpaid', client_reference_id: String(g.id) } } })).s === 200 && plusOf(g.id) === 0);
+    ok('a signed, paid checkout switches Plus on', (await hook(paid)).s === 200 && plusOf(g.id) === 1);
+    ok('Plus shows on the wall', (await call(o2, 'GET', `/api/groups/${g.id}/wall`)).j.group.plus === 1);
+    ok('Plus unlocks stakes above $5', (await call(o1, 'POST', `/api/groups/${g.id}/stake`, { amount: 10 })).s === 200);
+    ok('Plus unlocks a second challenge', (await call(o1, 'POST', `/api/groups/${g.id}/challenges`, { title: 'One', stake: 10 })).s === 200 && (await call(o1, 'POST', `/api/groups/${g.id}/challenges`, { title: 'Two', stake: 2 })).s === 200);
+    ok('a cancelled subscription switches Plus off', (await hook({ type: 'customer.subscription.deleted', data: { object: { id: 'sub_test_1' } } })).s === 200 && plusOf(g.id) === 0);
+  }
 
   console.log(JSON.stringify({ passed: pass, failed: fail, failures }, null, 2));
   srv.kill(); tg.close(); process.exit(fail ? 1 : 0);

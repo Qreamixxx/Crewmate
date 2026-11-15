@@ -434,7 +434,7 @@ route('POST', '/api/demo', async (req, res, u, b) => {
   const tz = validTz(String(b.tz || '')) ? String(b.tz) : DEFAULT_TZ, t = today(tz), code = crypto.randomBytes(4).toString('hex');
   const gid = Number(run('INSERT INTO groups(name,code,created,closed_through,tz,sample) VALUES(?,?,?,?,?,1)', 'Sample crew', code, addDays(t, -21), addDays(t, -1), tz).lastInsertRowid);
   const bot = n => Number(run('INSERT INTO users(name,salt,hash) VALUES(?,?,?)', n + '~' + code.slice(0, 6), 'x', 'no-login').lastInsertRowid);
-  const dana = bot('Dana'), arman = bot('Arman'), timur = bot('Timur');
+  const dana = bot('Dana'), arman = bot('Marcus'), timur = bot('Jess');
   for (const id of [dana, arman, timur, u.id]) run('INSERT INTO members VALUES(?,?,?)', gid, id, id === u.id ? t : addDays(t, -21));
   const res_ = (id, i, st) => run('INSERT INTO results VALUES(?,?,?,?)', gid, id, addDays(t, -i), st);
   const debt = (id, i, amt, paid, by) => run('INSERT INTO debts(group_id,user_id,day,amount,paid,paid_by) VALUES(?,?,?,?,?,?)', gid, id, addDays(t, -i), amt, paid, by);
@@ -452,7 +452,7 @@ route('POST', '/api/demo', async (req, res, u, b) => {
   task(arman, 'Finish lesson 4', 1); task(arman, 'Practice 30 min', 0);
   run('INSERT INTO stakes(group_id,user_id,day,amount) VALUES(?,?,?,?)', gid, arman, t, 5);
   const ago = m => Date.now() - m * 60000;
-  for (const [id, text, mins] of [[dana, 'Dana finished "Plan tomorrow"', 6], [dana, 'Dana finished everything today 🎉', 6], [arman, 'Arman finished "Finish lesson 4"', 41], [dana, 'Dana finished "Gym: legs"', 95]]) run('INSERT INTO events(group_id,user_id,kind,day,text,at) VALUES(?,?,?,?,?,?)', gid, id, 'sample', t, text, ago(mins));
+  for (const [id, text, mins] of [[dana, 'Dana finished "Plan tomorrow"', 6], [dana, 'Dana finished everything today 🎉', 6], [arman, 'Marcus finished "Finish lesson 4"', 41], [dana, 'Dana finished "Gym: legs"', 95]]) run('INSERT INTO events(group_id,user_id,kind,day,text,at) VALUES(?,?,?,?,?,?)', gid, id, 'sample', t, text, ago(mins));
   json(res, 200, { id: gid });
 });
 route('POST', '/api/groups/:id/tasks', async (req, res, u, b, [gid]) => {
