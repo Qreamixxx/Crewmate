@@ -1,0 +1,60 @@
+{
+  "setup": {
+    "users": 100,
+    "groups": 25,
+    "days": 14
+  },
+  "requests": {
+    "total": 10197,
+    "unexpectedErrors": 0,
+    "sample": [],
+    "perSecond": 328,
+    "p50ms": 108.9,
+    "p95ms": 241.7,
+    "p99ms": 472.4,
+    "maxMs": 5616.1
+  },
+  "correctness": {
+    "userDaysChecked": 1400,
+    "resultMismatches": 0,
+    "mismatchSample": [],
+    "debtsExpected": 261,
+    "debtsInDb": 261,
+    "debtDollarsExpected": 897,
+    "debtDollarsInDb": 897,
+    "duplicateDebts": 0,
+    "selfPaidDebts": 0,
+    "streakMismatches": 0,
+    "freeCapRefusedFifthMember": true
+  },
+  "cheating": {
+    "attempts": 597,
+    "blocked": 597,
+    "leaked": []
+  },
+  "product": {
+    "plansPosted": 967,
+    "fullyDone": 525,
+    "missed": 442,
+    "completionRate": 0.54,
+    "activePostersByDay": [
+      78,
+      87,
+      83,
+      82,
+      75,
+      74,
+      76,
+      69,
+      69,
+      58,
+      55,
+      60,
+      50,
+      51
+    ],
+    "dollarsLost": 897,
+    "debtsConfirmedPaid": 244,
+    "nudgesSent": 126
+  }
+}

@@ -1,0 +1,20 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex">
+<title>Crewmate admin</title><style>
+body{font-family:system-ui,sans-serif;margin:0;padding:24px;max-width:1000px;margin:auto;color:#111827}h1{margin:0 0 4px}.muted{opacity:.6}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(190px,1fr));gap:14px;margin:20px 0}.c{border-radius:24px;padding:18px;background:#f3f4f6}.c b{font-size:38px;display:block;letter-spacing:-1px}
+.c:nth-child(4n+1){background:#dbeafe}.c:nth-child(4n+2){background:#fef08a}.c:nth-child(4n+3){background:#bbf7d0}.c:nth-child(4n){background:#fed7aa}
+table{border-collapse:collapse;width:100%}td,th{padding:8px 10px;border-bottom:1px solid #e5e7eb;text-align:left}input,button{font:inherit;padding:10px 14px;border-radius:12px;border:2px solid #e5e7eb}button{background:#111827;color:#fff;border:0;font-weight:700;cursor:pointer}
+</style></head><body><h1>Crewmate admin</h1><p class="muted">Real usage only. Sample groups and their pretend friends are left out.</p>
+<div id="gate"><input id="t" type="password" placeholder="Admin token" onkeydown="if(event.key==='Enter')load()"> <button onclick="load()">Open</button> <span id="e" style="color:#b91c1c"></span></div><div id="out"></div>
+<script>
+const L={users:'People signed up',usersLast24h:'New in the last 24 h',groups:'Groups',groupsWith3Plus:'Groups with 3+ people',plusGroups:'Plus groups',activeToday:'Active today or yesterday',active7d:'Active in 7 days',returning3Days:'Came back on 3+ different days',tasksPosted:'Tasks posted',tasksTicked:'Tasks ticked',fullDays:'Fully finished days',dollarsStaked:'$ put on the line',dollarsLost:'$ lost to missed days',dollarsSettled:'$ settled between friends',reactions:'Cheers sent',nudges:'Nudges sent',telegramLinked:'Telegram connected'};
+const money=new Set(['dollarsStaked','dollarsLost','dollarsSettled']);
+async function load(){
+  const tok=document.getElementById('t').value||sessionStorage.getItem('adm')||'';
+  const r=await fetch('/api/admin/stats',{headers:{'x-admin-token':tok}});
+  if(!r.ok){document.getElementById('e').textContent='Wrong token, or ADMIN_TOKEN is not set on the server.';return}
+  sessionStorage.setItem('adm',tok);const d=await r.json();document.getElementById('gate').style.display='none';
+  document.getElementById('out').innerHTML='<div class="grid">'+Object.keys(L).map(k=>`<div class="c"><b>${money.has(k)?'$':''}${d[k]}</b>${L[k]}</div>`).join('')+'</div><h2>Last 14 days</h2><table><tr><th>Day</th><th>People</th><th>Tasks</th><th>Ticked</th></tr>'+d.perDay.map(x=>`<tr><td>${x.day}</td><td>${x.people}</td><td>${x.tasks}</td><td>${x.ticked}</td></tr>`).join('')+'</table>';
+}
+if(sessionStorage.getItem('adm'))load();
+</script></body></html>
