@@ -77,6 +77,21 @@ input{font:inherit;font-weight:600;border:3px solid #e5e7eb;border-radius:16px;p
 .plan{border-radius:32px;padding:32px}.plan .pt{font-weight:800;font-size:20px;display:flex;align-items:center}.plan .pp{font-size:56px;font-weight:800;letter-spacing:-2px;line-height:1.1;margin:8px 0 2px}
 .pl{display:flex;gap:12px;align-items:flex-start;padding:7px 0;font-size:16px;line-height:1.35}.pl .ck{flex:none;width:24px;height:24px;border-radius:50%;background:var(--green);color:var(--ink);display:grid;place-items:center;font-weight:800;font-size:13px}
 .sub{font-weight:600;opacity:.65;font-size:14px}
+.hero2{display:grid;grid-template-columns:1.25fr .75fr;gap:48px;align-items:center;padding:44px 0 36px}
+.hero2 h1{font-size:50px;line-height:1.06;letter-spacing:-1.8px;margin:0 0 20px}.hero2 h1 span{display:block;color:#9CA3AF}
+.hero2 .lede{font-size:19px;line-height:1.5;font-weight:500;opacity:.75;max-width:500px;margin:0 0 24px}
+.big-btn{font-size:17px;padding:15px 28px}
+.tk{background:#fff;border:2.5px solid var(--ink);border-radius:26px;box-shadow:10px 10px 0 var(--blue);transform:rotate(-2deg);max-width:430px;width:100%;margin-left:auto}
+.tk .top{display:flex;justify-content:space-between;padding:20px 26px 0;font-weight:800;font-size:14px;opacity:.6}
+.tk h3{font-size:42px;letter-spacing:-1.5px;line-height:1.05;margin:6px 26px 16px}
+.tk .fl{display:flex;gap:22px;flex-wrap:wrap;padding:0 26px 20px}.tk .fl small{display:block;font-size:12.5px;font-weight:600;opacity:.6;margin-bottom:2px}.tk .fl b{font-size:16px}
+.tk .perf{border-top:2.5px dashed var(--ink);margin:0 16px}
+.tk .pp{padding:12px 26px 16px}.tk .row2{display:flex;justify-content:space-between;align-items:center;gap:10px;padding:9px 0;font-weight:800;font-size:17px}.tk .row2 i{font-style:normal;font-weight:600;font-size:13px;opacity:.6;margin-left:6px}
+.tk .st{border-radius:99px;padding:5px 12px;font-size:13.5px;font-weight:800;white-space:nowrap}.tk .st.ok{background:var(--green)}.tk .st.no{background:var(--orange)}
+.tk .ft{background:var(--yellow);border-top:2.5px solid var(--ink);border-radius:0 0 22px 22px;padding:13px 26px;font-weight:800;font-size:14.5px}
+.step.q{background:var(--grey)}.step.q .num{color:var(--blue)}
+.btn:focus-visible,a:focus-visible,summary:focus-visible{outline:3px solid var(--blue);outline-offset:3px}
+@media(max-width:860px){.hero2{grid-template-columns:1fr;gap:36px;padding:20px 0 28px}.hero2 h1{font-size:38px;letter-spacing:-1.2px}.tk{transform:none;margin:0 auto;box-shadow:7px 7px 0 var(--blue)}.tk h3{font-size:34px}}
 </style></head><body><div class="wrap" id="app"></div>
 <script>
 const $app=document.getElementById('app');
@@ -139,22 +154,31 @@ async function boot0(){const j=await api('me');groups=j.groups}
 function authView(mode,err='',note=''){
   if(mode==='landing'&&!err){
     $app.innerHTML=`<nav><a class="logo" href="#/">Crewmate</a><button class="btn light sm" onclick="authView('form')">Log in</button></nav>
-    <div class="hero"><h1>You never skip the flight you paid for.<br>You skip the 6 a.m. run that cost nothing.</h1>
-    <p class="muted">Set a challenge with your friends and everyone who's in puts a few dollars on it. Show up and it costs you nothing. Skip it and you owe the crew.</p>
-    <p><button class="btn blue" onclick="authView('form')">Set a challenge</button> <a class="btn light" style="text-decoration:none;display:inline-block" href="#how" onclick="document.getElementById('how').scrollIntoView({behavior:'smooth'});return false">How it works</a></p>
-    <p class="small" style="font-weight:700">Crewmate never holds the money and never takes a cut. Stakes stay between you and your friends.</p></div>
-    <div class="stake" style="margin-top:0"><div class="small" style="font-weight:800;opacity:.7;letter-spacing:1px">CREW CHALLENGE · TUESDAY, 6:20 AM</div><b style="font-size:28px">6 a.m. run</b>
-    <div style="font-weight:700;margin-top:4px">every Tue, Thu · check-in 5:45 AM to 6:15 AM · <b>$5 each</b></div></div>
-    <div class="grid"><div class="card c0"><div class="who">Dana <span class="pill">🔥 21-day streak</span></div><div class="big">✓</div><b>Checked in at 5:58 AM</b></div>
-    <div class="card c2"><div class="who">Marcus <span class="pill">🔥 4-day streak</span></div><div class="big">✓</div><b>Checked in at 6:07 AM</b></div>
-    <div class="card empty"><div class="who">Jess <span class="pill">missed</span></div><div class="big">$5</div><b>Slept in. Owes the crew.</b></div></div>
+    <div class="hero2"><div>
+      <h1><span>You never skip the flight you paid for.</span>You skip the 6 a.m. run that cost nothing.</h1>
+      <p class="lede">Set a challenge with your friends. Everyone who's in puts a few dollars on it. Show up and it costs you nothing. Skip it and you owe the crew.</p>
+      <p style="margin:0 0 18px"><button class="btn blue big-btn" onclick="authView('form')">Set a challenge</button> <a class="btn light big-btn" style="text-decoration:none;display:inline-block" href="#how" onclick="document.getElementById('how').scrollIntoView({behavior:'smooth'});return false">How it works</a></p>
+      <p class="small" style="font-weight:700;max-width:420px;margin:0">Crewmate never holds the money and never takes a cut. Stakes stay between you and your friends.</p>
+    </div>
+    <div class="tk" aria-label="Example: a 6 a.m. run set up as a crew challenge">
+      <div class="top"><span>Crewmate</span><span>Tuesday</span></div>
+      <h3>6 a.m. run</h3>
+      <div class="fl"><div><small>When</small><b>Tue and Thu</b></div><div><small>Check-in</small><b>5:45 to 6:15 AM</b></div><div><small>If you skip</small><b>$5</b></div></div>
+      <div class="perf"></div>
+      <div class="pp">
+        <div class="row2"><span>Dana</span><span class="st ok">✓ 5:58 AM</span></div>
+        <div class="row2"><span>Marcus</span><span class="st ok">✓ 6:07 AM</span></div>
+        <div class="row2"><span>Jess <i>slept in</i></span><span class="st no">owes the crew $5</span></div>
+      </div>
+      <div class="ft">Show up and this ticket costs nothing.</div>
+    </div></div>
 
     <div class="sec" id="how"><h2>How it works</h2><p class="muted lead">Four steps, about a minute to set up, nothing to install.</p>
     <div class="steps">
-      <div class="step c0"><div class="num">1</div><h3>Set a challenge</h3><p>Say what, when and how much: "6 a.m. run, Tuesday and Thursday, $5 each." It can run every day, on chosen days, or just once.</p></div>
-      <div class="step c1"><div class="num">2</div><h3>Send the link</h3><p>Friends open it and tap "I'm in". Nothing is on you until you agree. Once you're in, money is on it, and everyone sees who hasn't answered.</p></div>
-      <div class="step c2"><div class="num">3</div><h3>Show up and check in</h3><p>Tick it off when you've done it. If the crew wants proof, the tick only works near the agreed time, or asks for a photo.</p></div>
-      <div class="step c3"><div class="num">4</div><h3>Skip it, owe the crew</h3><p>Once you're in, a missed day lands on the crew's tab, even if you never open the app. Pay your friends back and one of them marks it settled.</p></div>
+      <div class="step q"><div class="num">1</div><h3>Set a challenge</h3><p>Say what, when and how much: "6 a.m. run, Tuesday and Thursday, $5 each." It can run every day, on chosen days, or just once.</p></div>
+      <div class="step q"><div class="num">2</div><h3>Send the link</h3><p>Friends open it and tap "I'm in". Nothing is on you until you agree. Once you're in, money is on it, and everyone sees who hasn't answered.</p></div>
+      <div class="step q"><div class="num">3</div><h3>Show up and check in</h3><p>Tick it off when you've done it. If the crew wants proof, the tick only works near the agreed time, or asks for a photo.</p></div>
+      <div class="step q"><div class="num">4</div><h3>Skip it, owe the crew</h3><p>Once you're in, a missed day lands on the crew's tab, even if you never open the app. Pay your friends back and one of them marks it settled.</p></div>
     </div></div>
 
     <div class="sec"><h2>Why it works</h2><p class="muted lead">The difference between what you skip and what you don't isn't willpower. One of them already cost you something.</p>
